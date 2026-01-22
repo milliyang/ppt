@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试工具 - Paper Trade</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .test-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-card h3 {
+            margin: 0 0 16px 0;
+            color: #c9d1d9;
+            font-size: 16px;
+        }
+        .test-card p {
+            color: #8b949e;
+            font-size: 13px;
+            margin: 0 0 16px 0;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .input-group input {
+            padding: 10px 12px;
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            font-size: 14px;
+            width: 120px;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        .input-group label {
+            color: #8b949e;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+        }
+        .btn-test {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn-generate {
+            background: #238636;
+            color: white;
+        }
+        .btn-generate:hover {
+            background: #2ea043;
+        }
+        .btn-clean {
+            background: #21262d;
+            color: #f85149;
+            border: 1px solid #f85149;
+        }
+        .btn-clean:hover {
+            background: rgba(248, 81, 73, 0.1);
+        }
+        .result-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 16px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #8b949e;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .result-box.success {
+            border-color: #3fb950;
+            color: #3fb950;
+        }
+        .result-box.error {
+            border-color: #f85149;
+            color: #f85149;
+        }
+        .warning-box {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid #f85149;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 20px;
+            color: #f85149;
+            font-size: 13px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 16px;
+            color: #58a6ff;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .stock-list {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .stock-item {
+            background: #21262d;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .stock-item .symbol {
+            color: #58a6ff;
+            font-weight: bold;
+        }
+        .stock-item .info {
+            color: #8b949e;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 测试工具</h1>
+        <span class="status" style="color:#f0883e;">● 开发模式</span>
+    </div>
+    
+    <a href="/" class="back-link">← 返回交易界面</a>
+    
+    <div class="warning-box">
+        ⚠️ 此页面仅用于开发测试，生成的数据会覆盖当前账户数据。
+    </div>
+    
+    <!-- 生成测试数据 -->
+    <div class="test-card">
+        <h3>📊 生成测试数据</h3>
+        <p>模拟多天交易，生成净值曲线、订单、成交记录，用于验证统计功能。</p>
+        
+        <div class="input-group">
+            <label>天数:</label>
+            <input type="number" id="days" value="30" min="1" max="365">
+            <label style="color:#8b949e;font-size:12px;">(1-365)</label>
+        </div>
+        
+        <div>
+            <button class="btn-test btn-generate" onclick="generateData()">🚀 生成测试数据</button>
+        </div>
+        
+        <div class="result-box" id="generate-result" style="display:none;"></div>
+        
+        <div style="margin-top:16px;">
+            <div style="color:#8b949e;font-size:12px;margin-bottom:8px;">测试股票池:</div>
+            <div class="stock-list">
+                <div class="stock-item"><span class="symbol">AAPL</span> <span class="info">$185 ±2%</span></div>
+                <div class="stock-item"><span class="symbol">TSLA</span> <span class="info">$250 ±5%</span></div>
+                <div class="stock-item"><span class="symbol">GOOGL</span> <span class="info">$140 ±2.5%</span></div>
+                <div class="stock-item"><span class="symbol">NVDA</span> <span class="info">$480 ±4%</span></div>
+                <div class="stock-item"><span class="symbol">SPY</span> <span class="info">$470 ±1.5%</span></div>
+                <div class="stock-item"><span class="symbol">QQQ</span> <span class="info">$410 ±2%</span></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 清理数据 -->
+    <div class="test-card">
+        <h3>🗑️ 清理测试数据</h3>
+        <p>重置当前账户，清空所有订单、成交、持仓、净值历史。</p>
+        
+        <div>
+            <button class="btn-test btn-clean" onclick="cleanData()">清理数据</button>
+        </div>
+        
+        <div class="result-box" id="clean-result" style="display:none;"></div>
+    </div>
+    
+    <!-- 快捷验证 -->
+    <div class="test-card">
+        <h3>✅ 快捷验证</h3>
+        <p>生成数据后，点击下方链接验证各功能模块。</p>
+        
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;">
+            <a href="/" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📈 交易界面</a>
+            <a href="/watchlist" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📊 行情监控</a>
+            <a href="/api/analytics" target="_blank" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📉 绩效分析 API</a>
+            <a href="/api/equity" target="_blank" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📋 净值历史 API</a>
+        </div>
+    </div>
+    
+    <script>
+        async function generateData() {
+            const days = document.getElementById('days').value;
+            const resultBox = document.getElementById('generate-result');
+            
+            resultBox.style.display = 'block';
+            resultBox.className = 'result-box';
+            resultBox.textContent = '生成中...';
+            
+            try {
+                const res = await fetch(`/api/test/generate?days=${days}`, {method: 'POST'});
+                const data = await res.json();
+                
+                if (data.error) {
+                    resultBox.className = 'result-box error';
+                    resultBox.textContent = '错误: ' + data.error;
+                } else {
+                    resultBox.className = 'result-box success';
+                    resultBox.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (e) {
+                resultBox.className = 'result-box error';
+                resultBox.textContent = '请求失败: ' + e.message;
+            }
+        }
+        
+        async function cleanData() {
+            if (!confirm('确定要清理所有测试数据吗？这将重置当前账户。')) return;
+            
+            const resultBox = document.getElementById('clean-result');
+            
+            resultBox.style.display = 'block';
+            resultBox.className = 'result-box';
+            resultBox.textContent = '清理中...';
+            
+            try {
+                const res = await fetch('/api/test/clean', {method: 'POST'});
+                const data = await res.json();
+                
+                if (data.error) {
+                    resultBox.className = 'result-box error';
+                    resultBox.textContent = '错误: ' + data.error;
+                } else {
+                    resultBox.className = 'result-box success';
+                    resultBox.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (e) {
+                resultBox.className = 'result-box error';
+                resultBox.textContent = '请求失败: ' + e.message;
+            }
+        }
+    </script>
+</body>
+</html>
