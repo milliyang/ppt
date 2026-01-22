@@ -2,6 +2,8 @@
 
 Lightweight paper trading platform with multi-account support, real-time quotes, trade simulation, performance analytics, and Webhook signal integration.
 
+> Couldn't find a simple, decoupled, and cleanly architected solution — so I built one.
+
 🚀 *Part of **ZuiLow** — One-stop AI quantitative trading platform, stay tuned!*
 
 ![Trading Interface](doc/pic/trade.png)
