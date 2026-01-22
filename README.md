@@ -40,8 +40,10 @@ cp env.example .env
 **访问**: http://localhost:11182
 
 **默认用户**: 
+```
 admin / admin123
 ppt / ppt
+```
 
 ---
 
