@@ -4,7 +4,7 @@
 
 > 未寻得简洁、解耦且架构清晰的现有方案，遂自研之。
 
-🚀 ***ZuiLow** 一站式交易平台子项目，敬请期待！*
+🚀 ***ZuiLow** 一站式Ai交易平台子项目，敬请期待！*
 
 ![交易界面](doc/pic/trade.png)
 
@@ -39,7 +39,9 @@ cp env.example .env
 
 **访问**: http://localhost:11182
 
-**默认用户**: ppt / ppt
+**默认用户**: 
+admin / admin123
+ppt / ppt
 
 ---
 
