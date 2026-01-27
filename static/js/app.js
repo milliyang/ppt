@@ -627,6 +627,11 @@ function loadQuick() {
 // 完整加载（含 analytics）
 async function loadAll() { 
     await loadUser();  // 先加载用户信息
+    
+    // 初始化统一导航栏
+    if (typeof initNav === 'function') {
+        initNav({ title: 'Paper Trade', currentRoute: 'home' });
+    }
     loadQuick();
     loadSimulation();
     loadConfig();  // 加载系统配置 (Webhook Token)
@@ -637,5 +642,6 @@ async function loadAll() {
 document.addEventListener('DOMContentLoaded', function() {
     loadAll();  // 首次完整加载
     setupChartHover();
-    setInterval(loadQuick, 30000);  // 30秒快速刷新（不含 analytics）
+    // 自动刷新已移除，避免不必要的服务器请求
+    // 如需刷新，请手动点击刷新按钮或刷新页面
 });

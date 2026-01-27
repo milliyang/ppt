@@ -21,8 +21,8 @@ RUN pip install gunicorn eventlet>=0.24.1
 COPY . .
 
 # Create directories and set permissions
-RUN mkdir -p db logs && \
-    chmod -R 777 db logs
+RUN mkdir -p run/db run/logs run/opentimestamps && \
+    chmod -R 777 run
 
 # Command to run the application
 CMD ["gunicorn", \

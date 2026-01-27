@@ -4,13 +4,24 @@
 - 从 config/users.yaml 加载用户
 - Flask-Login 集成
 - 权限装饰器 (admin_required, login_required_api)
+- 服务端 Token 认证 (WEBHOOK_TOKEN)
 """
 import os
 from functools import wraps
-from flask import jsonify, current_app
+from flask import jsonify, current_app, request
 from flask_login import LoginManager, UserMixin, current_user, login_required
 from werkzeug.security import check_password_hash
 import yaml
+
+
+def _check_webhook_token() -> bool:
+    """检查请求是否携带有效的 Webhook Token (用于服务端调用)"""
+    webhook_token = os.getenv('WEBHOOK_TOKEN', '')
+    if not webhook_token:
+        return False
+    
+    req_token = request.headers.get('X-Webhook-Token', '')
+    return req_token == webhook_token
 
 # ============================================================
 # 用户模型
@@ -103,9 +114,20 @@ def init_login_manager(app):
 # ============================================================
 
 def admin_required(f):
-    """需要 admin 角色的装饰器 (用于 API，返回 JSON)"""
+    """
+    需要 admin 角色的装饰器 (用于 API，返回 JSON)
+    
+    支持两种认证方式:
+    1. 用户登录 session (admin 角色)
+    2. Webhook Token (服务端调用)
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
+        # 服务端 Token 认证 (视为 admin)
+        if _check_webhook_token():
+            return f(*args, **kwargs)
+        
+        # 用户登录认证
         if not current_user or not current_user.is_authenticated:
             return jsonify({'error': 'Unauthorized'}), 401
         if not current_user.is_admin:
@@ -115,9 +137,20 @@ def admin_required(f):
 
 
 def login_required_api(f):
-    """需要登录的装饰器 (用于 API，返回 JSON)"""
+    """
+    需要登录的装饰器 (用于 API，返回 JSON)
+    
+    支持两种认证方式:
+    1. 用户登录 session
+    2. Webhook Token (服务端调用)
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
+        # 服务端 Token 认证
+        if _check_webhook_token():
+            return f(*args, **kwargs)
+        
+        # 用户登录认证
         if not current_user or not current_user.is_authenticated:
             return jsonify({'error': 'Unauthorized'}), 401
         return f(*args, **kwargs)

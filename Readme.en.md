@@ -1,25 +1,24 @@
 # PPT - Paper Trade Platform
 
-Lightweight paper trading platform with multi-account support, real-time quotes, trade simulation, performance analytics, and Webhook signal integration.
+A lightweight paper trading platform supporting multi-account management, real-time market data, trade simulation, performance analytics, and webhook signal reception.
 
-> Couldn't find a simple, decoupled, and cleanly architected solution — so I built one.
+> Built from scratch due to lack of clean, decoupled, and well-architected existing solutions.
 
-🚀 *Part of **ZuiLow** — One-stop AI quantitative trading platform, stay tuned!*
+🚀 ***Sub-project of ZuiLow** all-in-one AI trading platform. Stay tuned!*
 
 ![Trading Interface](doc/pic/trade.png)
 
 ---
 
-## Features
+## Core Features
 
 | Feature | Description |
 |---------|-------------|
-| Manual Trading | Web UI for buy/sell orders |
-| Multi-Account | Create/switch/delete, multi-strategy support |
-| Webhook | External signals, TradingView compatible |
-| Trade Simulation | Slippage/commission/partial fills |
-| Analytics | Sharpe ratio/max drawdown/win rate |
-| Authentication | admin/viewer role-based access |
+| Multi-Account | Create/switch/delete accounts, support multiple strategies |
+| Webhook | Receive external signals, compatible with TradingView |
+| Trade Simulation | Slippage/commission/partial fill simulation |
+| Performance Analytics | Sharpe ratio/max drawdown/win rate |
+| Blockchain Timestamps | OpenTimestamps integration for tamper-proof account/trade records. Prevents cheating |
 
 ---
 
@@ -33,32 +32,54 @@ cp env.example .env
 # 2. Start server
 ./run_ppt_server.sh
 
-# Or Docker deployment
+# Or deploy with Docker
 ./deploy_ppt_server.sh upd
 ```
 
 **Access**: http://localhost:11182
 
-**Default user**: ppt / ppt
+**Default User**:
+- admin : admin / admin123
+- viewer: ppt / ppt
 
 ---
 
 ## Documentation
 
-| Doc | Description |
-|-----|-------------|
-| [Features](doc/feature_comparison.md) | Full feature list |
+| Document | Description |
+|----------|-------------|
+| [Feature Overview](doc/feature_comparison.md) | Complete feature list |
 | [API Usage](doc/api.usage.md) | API endpoints and examples |
 | [Webhook](doc/webhook.md) | External signal integration |
-| [Deployment](doc/docker_setup.md) | Docker setup details |
-| [Roadmap](doc/plan.md) | Feature status and plans |
+| [Deployment Guide](doc/docker_setup.md) | Docker deployment details |
+| [Development Plan](doc/plan.md) | Feature status and roadmap |
+| [OpenTimestamps](opents/readme.md) | Blockchain timestamp service |
 
 ---
 
-## Tech Stack
+## Technology Stack
 
-Flask / SQLite / yfinance / Docker
+- **Backend**: Flask (Python)
+- **Database**: SQLite
+- **Market Data**: yfinance
+- **Deployment**: Docker
+- **Blockchain**: OpenTimestamps (Bitcoin blockchain anchoring)
 
-### License
+---
+
+## OpenTimestamps Integration
+
+The platform includes built-in OpenTimestamps support for creating tamper-proof timestamps of account and trade data:
+
+- **Multiple Timestamps per Day**: Support for different market close times (e.g., US market at 16:00, HK market at 22:00)
+- **Automatic Scheduling**: Configurable cron jobs for automatic timestamp creation
+- **Labeled Timestamps**: Optional labels to distinguish different markets or strategies
+- **File Format**: `record_YYYY-MM-DD_HH-MM-SS.json` or `record_YYYY-MM-DD_label.json`
+
+See [OpenTimestamps Documentation](opents/readme.md) for detailed configuration.
+
+---
+
+## License
 
 No License

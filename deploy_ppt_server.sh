@@ -51,7 +51,7 @@ cmd_init() {
     else
         echo ".env 已存在"
     fi
-    mkdir -p db logs
+    mkdir -p run/db run/logs run/opentimestamps
     echo -e "${GREEN}完成!${NC}"
 }
 

@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenTimestamps 管理 - Paper Trade</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/static/icon4-dollar.svg">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/nav.js"></script>
+    <style>
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            margin: 0 0 16px 0;
+            color: #f0f6fc;
+            font-size: 16px;
+        }
+        .btn {
+            background: #238636;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .btn:hover {
+            background: #2ea043;
+        }
+        .btn-secondary {
+            background: #21262d;
+            color: #c9d1d9;
+        }
+        .btn-secondary:hover {
+            background: #30363d;
+        }
+        .btn-danger {
+            background: #da3633;
+        }
+        .btn-danger:hover {
+            background: #f85149;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #21262d;
+            color: #c9d1d9;
+            font-size: 13px;
+        }
+        th {
+            color: #8b949e;
+            font-weight: 600;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .status-success {
+            background: rgba(63, 185, 80, 0.15);
+            color: #3fb950;
+        }
+        .status-pending {
+            background: rgba(251, 188, 5, 0.15);
+            color: #fbb305;
+        }
+        .status-error {
+            background: rgba(248, 81, 73, 0.15);
+            color: #f85149;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .action-buttons button {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .info-item {
+            background: #0d1117;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #21262d;
+        }
+        .info-item .label {
+            color: #8b949e;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+        .info-item .value {
+            color: #c9d1d9;
+            font-size: 14px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="header"></div>
+    
+    <div class="container">
+        <!-- 服务信息 -->
+        <div class="card">
+            <h2>服务信息</h2>
+            <div id="service-info" class="info-grid">
+                <div class="info-item">
+                    <div class="label">存储目录</div>
+                    <div class="value" id="storage-dir">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">定时任务</div>
+                    <div class="value" id="schedule">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">GitHub 提交</div>
+                    <div class="value" id="github-enabled">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 操作按钮 -->
+        <div class="card">
+            <h2>操作</h2>
+            <div style="display:flex;gap:8px;">
+                <button class="btn" onclick="createTimestamp()">⏰ 创建时间戳</button>
+                <button class="btn btn-secondary" onclick="loadHistory()">🔄 刷新列表</button>
+            </div>
+        </div>
+        
+        <!-- 历史记录 -->
+        <div class="card">
+            <h2>时间戳历史</h2>
+            <div id="history-container">
+                <div style="color:#8b949e;text-align:center;padding:20px;">加载中...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 加载用户信息
+        async function loadUser() {
+            try {
+                const res = await fetch('/api/user');
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const user = await res.json();
+                document.getElementById('user-info').textContent = `${user.username} (${user.role})`;
+            } catch (e) {
+                console.error('加载用户信息失败:', e);
+            }
+        }
+        
+        function logout() {
+            fetch('/api/logout', { method: 'POST' }).then(() => {
+                window.location.href = '/login';
+            });
+        }
+        
+        // 加载服务信息
+        async function loadServiceInfo() {
+            try {
+                const res = await fetch('/api/ots/info');
+                if (!res.ok) {
+                    console.error('加载服务信息失败:', res.statusText);
+                    return;
+                }
+                const data = await res.json();
+                document.getElementById('storage-dir').textContent = data.storage_dir || '-';
+                document.getElementById('schedule').textContent = data.schedule || '未配置';
+                document.getElementById('github-enabled').textContent = data.github_enabled ? '已启用' : '未启用';
+            } catch (e) {
+                console.error('加载服务信息失败:', e);
+            }
+        }
+        
+        // 加载历史记录
+        async function loadHistory() {
+            const container = document.getElementById('history-container');
+            container.innerHTML = '<div style="color:#8b949e;text-align:center;padding:20px;">加载中...</div>';
+            
+            try {
+                const res = await fetch('/api/ots/history?limit=100');
+                const data = await res.json();
+                
+                if (!data.history || data.history.length === 0) {
+                    container.innerHTML = '<div style="color:#8b949e;text-align:center;padding:20px;">暂无时间戳记录</div>';
+                    return;
+                }
+                
+                container.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>时间/标签</th>
+                                <th>状态</th>
+                                <th>记录文件</th>
+                                <th>证明文件</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.history.map(item => {
+                                // 根据是否有证明文件判断状态
+                                const hasProof = item.has_proof || false;
+                                const statusClass = hasProof ? 'status-success' : 'status-pending';
+                                const statusText = hasProof ? '✓ 已确认' : '⏳ 等待确认';
+                                
+                                // 构建唯一标识符（用于下载和验证）
+                                const dateKey = item.time_suffix ? `${item.date}_${item.time_suffix}` : item.date;
+                                
+                                // 显示时间或标签
+                                let timeLabel = '-';
+                                if (item.label) {
+                                    timeLabel = item.label;
+                                } else if (item.time_suffix) {
+                                    // 将 16-00-00 格式转换为 16:00:00 显示
+                                    timeLabel = item.time_suffix.replace(/-/g, ':');
+                                } else if (item.timestamp) {
+                                    // 从时间戳中提取时间
+                                    try {
+                                        const dt = new Date(item.timestamp);
+                                        timeLabel = dt.toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+                                    } catch (e) {
+                                        timeLabel = '-';
+                                    }
+                                }
+                                
+                                return `
+                                    <tr>
+                                        <td>${item.date}</td>
+                                        <td style="font-size:11px;color:#8b949e;">${timeLabel}</td>
+                                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                                        <td>✓</td>
+                                        <td>${hasProof ? '✓' : '✗'}</td>
+                                        <td>
+                                            <div class="action-buttons">
+                                                <button class="btn btn-secondary" onclick="downloadRecord('${dateKey}')">下载记录</button>
+                                                ${hasProof ? `<button class="btn btn-secondary" onclick="downloadProof('${dateKey}')">下载证明</button>` : ''}
+                                                ${hasProof ? `<button class="btn btn-secondary" onclick="verifyTimestamp('${dateKey}')">验证</button>` : ''}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (e) {
+                container.innerHTML = `<div style="color:#f85149;text-align:center;padding:20px;">加载失败: ${e.message}</div>`;
+                console.error('加载历史记录失败:', e);
+            }
+        }
+        
+        // 创建时间戳
+        async function createTimestamp() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '创建中...';
+            
+            try {
+                const res = await fetch('/api/ots/create', { method: 'POST' });
+                const data = await res.json();
+                
+                if (res.ok && data.status === 'ok') {
+                    btn.textContent = '✓ 创建成功';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.disabled = false;
+                        loadHistory();
+                        loadServiceInfo(); // 刷新服务信息
+                    }, 2000);
+                } else {
+                    alert('创建失败: ' + (data.error || '未知错误'));
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('创建失败: ' + e.message);
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+        
+        // 下载记录文件
+        async function downloadRecord(date) {
+            try {
+                const res = await fetch(`/api/ots/record/${date}`);
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    alert('下载失败: ' + (data.error || res.statusText));
+                    return;
+                }
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `record_${date}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('下载失败: ' + e.message);
+            }
+        }
+        
+        // 下载证明文件
+        async function downloadProof(date) {
+            try {
+                const res = await fetch(`/api/ots/proof/${date}`);
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    alert('下载失败: ' + (data.error || res.statusText));
+                    return;
+                }
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `record_${date}.ots`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('下载失败: ' + e.message);
+            }
+        }
+        
+        // 验证时间戳
+        async function verifyTimestamp(date) {
+            try {
+                const res = await fetch(`/api/ots/verify/${date}`, { method: 'POST' });
+                const data = await res.json();
+                
+                if (!res.ok) {
+                    alert('验证失败: ' + (data.error || '未知错误'));
+                    return;
+                }
+                
+                if (data.verification && data.verification.verified) {
+                    alert('验证成功: 时间戳有效\n文件哈希: ' + (data.file_hash || '-'));
+                } else {
+                    const errorMsg = data.verification?.error || data.error || '验证失败';
+                    alert('验证失败: ' + errorMsg);
+                }
+            } catch (e) {
+                alert('验证失败: ' + e.message);
+            }
+        }
+        
+        // 页面加载
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化统一导航栏
+            if (typeof initNav === 'function') {
+                initNav({ title: 'OpenTimestamps 管理', currentRoute: 'ots' });
+            }
+            loadServiceInfo();
+            loadHistory();
+        });
+    </script>
+</body>
+</html>

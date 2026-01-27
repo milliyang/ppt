@@ -4,7 +4,9 @@
     <title>行情监控 - Paper Trade</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/static/icon4-dollar.svg">
     <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/nav.js"></script>
     <style>
         .service-status {
             display: flex;
@@ -147,15 +149,10 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>📊 行情监控</h1>
-        <span class="status" id="service-indicator">检测中...</span>
-    </div>
-    
-    <a href="/" class="back-link">← 返回交易界面</a>
+    <div class="header"></div>
     
     <!-- 服务状态 -->
-    <div class="service-status unknown" id="service-status">
+    <div class="service-status unknown" id="service-status" style="max-width:1200px;margin:0 auto 20px auto;">
         <div class="dot"></div>
         <div>
             <strong>yfinance 服务</strong>
@@ -165,7 +162,7 @@
         <button class="btn btn-sm" onclick="testService()" style="margin-left:auto;">🔄 测试</button>
     </div>
     
-    <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="grid">
         <!-- 添加股票 -->
         <div class="card">
             <h2>添加关注</h2>
@@ -201,13 +198,13 @@
                 <p>• 行情缓存 60 秒</p>
             </div>
         </div>
-    </div>
-    
-    <!-- 关注列表 -->
-    <div class="card" style="margin-top: 20px;">
-        <h2>关注列表 <span id="watchlist-count" style="font-size:12px;color:#8b949e;margin-left:8px;"></span></h2>
-        <div id="watchlist-container">
-            <div class="empty-state">加载中...</div>
+        
+        <!-- 关注列表 -->
+        <div class="card" style="grid-column: span 2;">
+            <h2>关注列表 <span id="watchlist-count" style="font-size:12px;color:#8b949e;margin-left:8px;"></span></h2>
+            <div id="watchlist-container">
+                <div class="empty-state">加载中...</div>
+            </div>
         </div>
     </div>
     
@@ -438,6 +435,15 @@
         // 初始化
         testService();
         loadWatchlist();
+    </script>
+    <script src="/static/js/app.js"></script>
+    <script>
+        // 页面加载时初始化导航
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof initNav === 'function') {
+                initNav({ title: '行情监控', currentRoute: 'watchlist' });
+            }
+        });
     </script>
 </body>
 </html>

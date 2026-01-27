@@ -7,8 +7,8 @@ cd "$(dirname "$0")"
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate sai
 
-# 创建数据目录
-mkdir -p db logs
+# 创建运行时数据目录
+mkdir -p run/db run/logs run/opentimestamps
 
 echo "启动 Paper Trade 服务..."
 echo "访问地址: http://0.0.0.0:11182"

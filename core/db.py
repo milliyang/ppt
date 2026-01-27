@@ -7,7 +7,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
 
-DB_FILE = os.getenv('DB_FILE', 'db/paper_trade.db')
+DB_FILE = os.getenv('DB_FILE', 'run/db/paper_trade.db')
 DEFAULT_CAPITAL = 1000000
 
 # 默认关注列表

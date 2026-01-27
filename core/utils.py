@@ -5,10 +5,11 @@
 - 行情获取 (带缓存)
 """
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 行情缓存
 QUOTE_CACHE = {}
-CACHE_TTL = 60  # 缓存 60 秒
+CACHE_TTL = 300  # 缓存 300 秒 (5分钟)
 
 # 富途格式 -> yfinance 格式 映射
 MARKET_SUFFIX_MAP = {
@@ -83,9 +84,43 @@ def get_quote(symbol: str) -> dict:
         return {'symbol': symbol, 'price': 0, 'error': str(e), 'valid': False}
 
 
-def get_quotes_batch(symbols: list) -> dict:
-    """批量获取行情"""
+def get_quotes_batch(symbols: list, max_workers: int = 5) -> dict:
+    """
+    批量获取行情 (并行)
+    
+    Args:
+        symbols: 股票代码列表
+        max_workers: 最大并发数 (默认 5)
+    
+    Returns:
+        {symbol: quote_data} 字典
+    """
+    if not symbols:
+        return {}
+    
+    # 单个股票直接获取
+    if len(symbols) == 1:
+        return {symbols[0]: get_quote(symbols[0])}
+    
     result = {}
-    for symbol in symbols:
-        result[symbol] = get_quote(symbol)
+    
+    # 并行获取
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_symbol = {
+            executor.submit(get_quote, symbol): symbol 
+            for symbol in symbols
+        }
+        
+        for future in as_completed(future_to_symbol):
+            symbol = future_to_symbol[future]
+            try:
+                result[symbol] = future.result()
+            except Exception as e:
+                result[symbol] = {
+                    'symbol': symbol, 
+                    'price': 0, 
+                    'error': str(e), 
+                    'valid': False
+                }
+    
     return result

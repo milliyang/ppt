@@ -4,19 +4,23 @@
     <title>测试工具 - Paper Trade</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/static/icon4-dollar.svg">
     <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/nav.js"></script>
     <style>
         .test-card {
             background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+            border: 1px solid #21262d;
+            border-radius: 6px;
+            padding: 14px;
         }
         .test-card h3 {
-            margin: 0 0 16px 0;
-            color: #c9d1d9;
-            font-size: 16px;
+            margin: 0 0 10px 0;
+            color: #8b949e;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .test-card p {
             color: #8b949e;
@@ -100,16 +104,6 @@
             color: #f85149;
             font-size: 13px;
         }
-        .back-link {
-            display: inline-block;
-            margin-bottom: 16px;
-            color: #58a6ff;
-            text-decoration: none;
-            font-size: 13px;
-        }
-        .back-link:hover {
-            text-decoration: underline;
-        }
         .stock-list {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -133,69 +127,66 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🧪 测试工具</h1>
-        <span class="status" style="color:#f0883e;">● 开发模式</span>
-    </div>
+    <div class="header"></div>
     
-    <a href="/" class="back-link">← 返回交易界面</a>
-    
-    <div class="warning-box">
+    <div class="warning-box" style="max-width:1200px;margin:0 auto 20px auto;">
         ⚠️ 此页面仅用于开发测试，生成的数据会覆盖当前账户数据。
     </div>
     
-    <!-- 生成测试数据 -->
-    <div class="test-card">
-        <h3>📊 生成测试数据</h3>
-        <p>模拟多天交易，生成净值曲线、订单、成交记录，用于验证统计功能。</p>
-        
-        <div class="input-group">
-            <label>天数:</label>
-            <input type="number" id="days" value="30" min="1" max="365">
-            <label style="color:#8b949e;font-size:12px;">(1-365)</label>
-        </div>
-        
-        <div>
-            <button class="btn-test btn-generate" onclick="generateData()">🚀 生成测试数据</button>
-        </div>
-        
-        <div class="result-box" id="generate-result" style="display:none;"></div>
-        
-        <div style="margin-top:16px;">
-            <div style="color:#8b949e;font-size:12px;margin-bottom:8px;">测试股票池:</div>
-            <div class="stock-list">
-                <div class="stock-item"><span class="symbol">AAPL</span> <span class="info">$185 ±2%</span></div>
-                <div class="stock-item"><span class="symbol">TSLA</span> <span class="info">$250 ±5%</span></div>
-                <div class="stock-item"><span class="symbol">GOOGL</span> <span class="info">$140 ±2.5%</span></div>
-                <div class="stock-item"><span class="symbol">NVDA</span> <span class="info">$480 ±4%</span></div>
-                <div class="stock-item"><span class="symbol">SPY</span> <span class="info">$470 ±1.5%</span></div>
-                <div class="stock-item"><span class="symbol">QQQ</span> <span class="info">$410 ±2%</span></div>
+    <div class="grid">
+        <!-- 生成测试数据 -->
+        <div class="test-card" style="grid-column: span 2;">
+            <h3>📊 生成测试数据</h3>
+            <p>模拟多天交易，生成净值曲线、订单、成交记录，用于验证统计功能。</p>
+            
+            <div class="input-group">
+                <label>天数:</label>
+                <input type="number" id="days" value="30" min="1" max="365">
+                <label style="color:#8b949e;font-size:12px;">(1-365)</label>
+            </div>
+            
+            <div>
+                <button class="btn-test btn-generate" onclick="generateData()">🚀 生成测试数据</button>
+            </div>
+            
+            <div class="result-box" id="generate-result" style="display:none;"></div>
+            
+            <div style="margin-top:16px;">
+                <div style="color:#8b949e;font-size:12px;margin-bottom:8px;">测试股票池:</div>
+                <div class="stock-list">
+                    <div class="stock-item"><span class="symbol">AAPL</span> <span class="info">$185 ±2%</span></div>
+                    <div class="stock-item"><span class="symbol">TSLA</span> <span class="info">$250 ±5%</span></div>
+                    <div class="stock-item"><span class="symbol">GOOGL</span> <span class="info">$140 ±2.5%</span></div>
+                    <div class="stock-item"><span class="symbol">NVDA</span> <span class="info">$480 ±4%</span></div>
+                    <div class="stock-item"><span class="symbol">SPY</span> <span class="info">$470 ±1.5%</span></div>
+                    <div class="stock-item"><span class="symbol">QQQ</span> <span class="info">$410 ±2%</span></div>
+                </div>
             </div>
         </div>
-    </div>
     
-    <!-- 清理数据 -->
-    <div class="test-card">
-        <h3>🗑️ 清理测试数据</h3>
-        <p>重置当前账户，清空所有订单、成交、持仓、净值历史。</p>
-        
-        <div>
-            <button class="btn-test btn-clean" onclick="cleanData()">清理数据</button>
+        <!-- 清理数据 -->
+        <div class="test-card">
+            <h3>🗑️ 清理测试数据</h3>
+            <p>重置当前账户，清空所有订单、成交、持仓、净值历史。</p>
+            
+            <div>
+                <button class="btn-test btn-clean" onclick="cleanData()">清理数据</button>
+            </div>
+            
+            <div class="result-box" id="clean-result" style="display:none;"></div>
         </div>
         
-        <div class="result-box" id="clean-result" style="display:none;"></div>
-    </div>
-    
-    <!-- 快捷验证 -->
-    <div class="test-card">
-        <h3>✅ 快捷验证</h3>
-        <p>生成数据后，点击下方链接验证各功能模块。</p>
-        
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;">
-            <a href="/" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📈 交易界面</a>
-            <a href="/watchlist" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📊 行情监控</a>
-            <a href="/api/analytics" target="_blank" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📉 绩效分析 API</a>
-            <a href="/api/equity" target="_blank" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📋 净值历史 API</a>
+        <!-- 快捷验证 -->
+        <div class="test-card">
+            <h3>✅ 快捷验证</h3>
+            <p>生成数据后，点击下方链接验证各功能模块。</p>
+            
+            <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;">
+                <a href="/" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📈 交易界面</a>
+                <a href="/watchlist" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📊 行情监控</a>
+                <a href="/api/analytics" target="_blank" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📉 绩效分析 API</a>
+                <a href="/api/equity" target="_blank" class="btn-test" style="background:#21262d;color:#58a6ff;text-decoration:none;border:1px solid #30363d;">📋 净值历史 API</a>
+            </div>
         </div>
     </div>
     
@@ -250,6 +241,20 @@
                 resultBox.textContent = '请求失败: ' + e.message;
             }
         }
+    </script>
+    <script src="/static/js/app.js"></script>
+    <script>
+        // 加载用户信息
+        if (typeof loadUser === 'function') {
+            loadUser();
+        }
+        
+        // 页面加载时初始化导航
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof initNav === 'function') {
+                initNav({ title: '测试工具', currentRoute: 'test' });
+            }
+        });
     </script>
 </body>
 </html>

@@ -10,6 +10,7 @@ Paper Trade - 模拟交易平台
 - 用户认证
 """
 import os
+import logging
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, jsonify, send_from_directory, request, redirect, url_for
@@ -20,6 +21,48 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# ============================================================
+# 配置日志系统
+# ============================================================
+def setup_logging():
+    """配置日志系统"""
+    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+    log_file = os.getenv('LOG_FILE', 'run/logs/paper_trade.log')
+    
+    # 确保日志目录存在
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # 配置根日志记录器
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level, logging.INFO))
+    
+    # 清除现有的处理器
+    root_logger.handlers.clear()
+    
+    # 创建格式化器
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # 文件处理器
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(getattr(logging, log_level, logging.INFO))
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+    
+    # 控制台处理器（用于开发环境）
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(getattr(logging, log_level, logging.INFO))
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    
+    logging.info(f"日志系统已初始化: 级别={log_level}, 文件={log_file}")
+
+# 初始化日志
+setup_logging()
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -71,43 +114,86 @@ def setup_scheduler():
         print("[Scheduler] 安装: pip install apscheduler")
         return None
     
+    scheduler = BackgroundScheduler()
+    
+    # ===== 净值更新定时任务 =====
     # 从环境变量读取配置，默认美股时间
     # 格式: "5:0,21:30,0:0" 表示 5:00, 21:30, 0:00
     schedule_times = os.getenv('EQUITY_UPDATE_SCHEDULE', '5:0,21:30,0:0')
     
-    if not schedule_times or schedule_times.lower() == 'off':
-        print("[Scheduler] 定时更新已禁用 (EQUITY_UPDATE_SCHEDULE=off)")
-        return None
-    
-    scheduler = BackgroundScheduler()
-    
-    def auto_update_equity():
-        """自动更新所有账户净值"""
-        print(f"[Scheduler] 开始更新净值 {datetime.now().isoformat()}")
-        try:
-            for acc in database.get_all_accounts():
-                account_name = acc['name']
-                positions = database.get_positions(account_name)
-                
-                if positions:
-                    symbols = list(positions.keys())
-                    quotes = get_quotes_batch(symbols)
-                    database.update_equity_history(account_name, quotes)
-                else:
-                    database.update_equity_history(account_name)
+    if schedule_times and schedule_times.lower() != 'off':
+        def auto_update_equity():
+            """自动更新所有账户净值"""
+            print(f"[Scheduler] 开始更新净值 {datetime.now().isoformat()}")
+            try:
+                for acc in database.get_all_accounts():
+                    account_name = acc['name']
+                    positions = database.get_positions(account_name)
                     
-            print(f"[Scheduler] 净值更新完成")
-        except Exception as e:
-            print(f"[Scheduler] 净值更新失败: {e}")
+                    if positions:
+                        symbols = list(positions.keys())
+                        quotes = get_quotes_batch(symbols)
+                        database.update_equity_history(account_name, quotes)
+                    else:
+                        database.update_equity_history(account_name)
+                        
+                print(f"[Scheduler] 净值更新完成")
+            except Exception as e:
+                print(f"[Scheduler] 净值更新失败: {e}")
+        
+        # 解析时间配置
+        for time_str in schedule_times.split(','):
+            time_str = time_str.strip()
+            if ':' in time_str:
+                hour, minute = time_str.split(':')
+                trigger = CronTrigger(hour=int(hour), minute=int(minute))
+                scheduler.add_job(auto_update_equity, trigger, id=f'equity_update_{hour}_{minute}')
+                print(f"[Scheduler] 添加净值更新任务: {hour}:{minute}")
+    else:
+        print("[Scheduler] 净值更新已禁用 (EQUITY_UPDATE_SCHEDULE=off)")
     
-    # 解析时间配置
-    for time_str in schedule_times.split(','):
-        time_str = time_str.strip()
-        if ':' in time_str:
-            hour, minute = time_str.split(':')
-            trigger = CronTrigger(hour=int(hour), minute=int(minute))
-            scheduler.add_job(auto_update_equity, trigger, id=f'equity_update_{hour}_{minute}')
-            print(f"[Scheduler] 添加定时任务: {hour}:{minute}")
+    # ===== OpenTimestamps 定时任务 =====
+    # 从环境变量读取配置，支持多个时间点
+    # 格式: "16:0" 表示 16:00（单个时间点）
+    # 格式: "16:0,22:0" 表示 16:00 和 22:00（多个时间点，用逗号分隔）
+    # 格式: "16:0:us_market,22:0:hk_market" 表示带标签的多个时间点（可选标签）
+    ots_schedule = os.getenv('OTS_TIMESTAMP_SCHEDULE', '16:0')
+    
+    if ots_schedule and ots_schedule.lower() != 'off':
+        def create_daily_timestamp_with_label(label=None):
+            """创建每日时间戳（带标签）"""
+            def wrapper():
+                print(f"[Scheduler] 开始创建每日时间戳 {datetime.now().isoformat()}, label={label}")
+                try:
+                    from opents import service
+                    result = service.create_daily_timestamp(label=label)
+                    if result.get('success'):
+                        print(f"[Scheduler] 时间戳创建成功: {result.get('date')}, label={label}")
+                    else:
+                        print(f"[Scheduler] 时间戳创建失败: {result.get('error')}")
+                except Exception as e:
+                    print(f"[Scheduler] 时间戳创建异常: {e}")
+            return wrapper
+        
+        # 解析多个时间点配置
+        schedule_items = [item.strip() for item in ots_schedule.split(',')]
+        
+        for idx, schedule_item in enumerate(schedule_items):
+            # 支持格式: "16:0" 或 "16:0:us_market"
+            parts = schedule_item.split(':')
+            if len(parts) >= 2:
+                hour = int(parts[0])
+                minute = int(parts[1])
+                label = parts[2] if len(parts) >= 3 else None
+                
+                trigger = CronTrigger(hour=hour, minute=minute)
+                job_id = f'ots_timestamp_{hour}_{minute}' + (f'_{label}' if label else '')
+                job_func = create_daily_timestamp_with_label(label=label)
+                
+                scheduler.add_job(job_func, trigger, id=job_id)
+                print(f"[Scheduler] 添加时间戳任务: {hour}:{minute}" + (f" (label: {label})" if label else ""))
+    else:
+        print("[Scheduler] 时间戳任务已禁用 (OTS_TIMESTAMP_SCHEDULE=off)")
     
     scheduler.start()
     print("[Scheduler] 定时任务已启动")
@@ -202,6 +288,15 @@ def test_page():
     return send_from_directory(STATIC_DIR, 'test.html')
 
 
+@app.route('/ots')
+@login_required
+def ots_page():
+    """OpenTimestamps 管理页面 (需 admin)"""
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    return send_from_directory(STATIC_DIR, 'ots.html')
+
+
 @app.route('/api/health')
 def health():
     """Health check endpoint"""
@@ -235,6 +330,13 @@ def info():
             '/api/analytics': '绩效分析',
             '/api/simulation': '交易模拟配置',
             '/api/webhook': 'POST - Webhook 信号接收',
+            '/api/ots/history': 'GET - OpenTimestamps 历史记录',
+            '/api/ots/detail/<date>': 'GET - 获取指定日期的时间戳详情',
+            '/api/ots/record/<date>': 'GET - 下载原始记录文件',
+            '/api/ots/proof/<date>': 'GET - 下载证明文件',
+            '/api/ots/create': 'POST - 手动创建时间戳 (admin)',
+            '/api/ots/verify/<date>': 'POST - 验证时间戳 (admin)',
+            '/api/ots/info': 'GET - OpenTimestamps 服务信息',
         }
     })
 
