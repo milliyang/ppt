@@ -146,7 +146,7 @@
         <div class="card">
             <h2>操作</h2>
             <div style="display:flex;gap:8px;">
-                <button class="btn" onclick="createTimestamp()">⏰ 创建时间戳</button>
+                <button class="btn admin-only" onclick="createTimestamp()" style="display:none;">⏰ 创建时间戳</button>
                 <button class="btn btn-secondary" onclick="loadHistory()">🔄 刷新列表</button>
             </div>
         </div>
@@ -162,6 +162,7 @@
     
     <script>
         // 加载用户信息
+        let currentUserRole = 'viewer';
         async function loadUser() {
             try {
                 const res = await fetch('/api/user');
@@ -170,7 +171,19 @@
                     return;
                 }
                 const user = await res.json();
+                currentUserRole = user.role || 'viewer';
                 document.getElementById('user-info').textContent = `${user.username} (${user.role})`;
+                
+                // 根据角色显示/隐藏 admin 功能
+                if (currentUserRole === 'admin') {
+                    document.querySelectorAll('.admin-only').forEach(el => {
+                        el.style.display = '';
+                    });
+                } else {
+                    document.querySelectorAll('.admin-only').forEach(el => {
+                        el.style.display = 'none';
+                    });
+                }
             } catch (e) {
                 console.error('加载用户信息失败:', e);
             }
@@ -263,7 +276,7 @@
                                             <div class="action-buttons">
                                                 <button class="btn btn-secondary" onclick="downloadRecord('${dateKey}')">下载记录</button>
                                                 ${hasProof ? `<button class="btn btn-secondary" onclick="downloadProof('${dateKey}')">下载证明</button>` : ''}
-                                                ${hasProof ? `<button class="btn btn-secondary" onclick="verifyTimestamp('${dateKey}')">验证</button>` : ''}
+                                                ${hasProof && currentUserRole === 'admin' ? `<button class="btn btn-secondary" onclick="verifyTimestamp('${dateKey}')">验证</button>` : ''}
                                             </div>
                                         </td>
                                     </tr>
@@ -378,11 +391,12 @@
         }
         
         // 页面加载
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             // 初始化统一导航栏
             if (typeof initNav === 'function') {
                 initNav({ title: 'OpenTimestamps 管理', currentRoute: 'ots' });
             }
+            await loadUser();  // 先加载用户信息，确保角色正确
             loadServiceInfo();
             loadHistory();
         });

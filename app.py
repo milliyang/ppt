@@ -291,9 +291,8 @@ def test_page():
 @app.route('/ots')
 @login_required
 def ots_page():
-    """OpenTimestamps 管理页面 (需 admin)"""
-    if not current_user.is_admin:
-        return redirect(url_for('index'))
+    """OpenTimestamps 管理页面 (所有登录用户可查看)"""
+    # 移除 admin 检查，允许所有登录用户查看
     return send_from_directory(STATIC_DIR, 'ots.html')
 
 
