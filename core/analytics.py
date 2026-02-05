@@ -1,40 +1,32 @@
 """
-Paper Trade 绩效分析模块
+PPT analytics: Sharpe ratio, max drawdown, win rate / profit factor, position analysis.
 
-提供:
-- 夏普比率 (Sharpe Ratio)
-- 最大回撤 (Max Drawdown)
-- 胜率/盈亏比 (Win Rate / Profit Factor)
-- 持仓分析 (Position Analysis)
+Used for: PPT web UI analytics API; reads equity history and trades from core.db; uses core.utils for current date.
+
+Functions:
+    calc_sharpe_ratio(account_name, risk_free_rate=0.02) -> Dict       Sharpe ratio, annual return, volatility
+    calc_max_drawdown(account_name) -> Dict                             Max drawdown, peak/trough dates
+    calc_trade_stats(account_name) -> Dict                              Win rate, profit factor, total trades
+    get_position_analysis(account_name) -> Dict                         Position-level PnL and weights
+    get_full_analytics(account_name) -> Dict                            All of the above in one call
+
+Features:
+    - Equity history and trades from database; risk-free rate default 2%; returns dicts with standard keys
 """
 import math
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
 from . import db as database
+from .utils import get_current_datetime_iso
 
 
 # ============================================================
-# 夏普比率计算
+# Sharpe ratio
 # ============================================================
 
 def calc_sharpe_ratio(account_name: str, risk_free_rate: float = 0.02) -> Dict[str, Any]:
-    """
-    计算夏普比率
-    
-    Sharpe Ratio = (Rp - Rf) / σp
-    - Rp: 投资组合平均收益率
-    - Rf: 无风险收益率 (年化，默认 2%)
-    - σp: 收益率标准差
-    
-    Returns:
-        {
-            'sharpe_ratio': float,    # 夏普比率
-            'annual_return': float,   # 年化收益率
-            'volatility': float,      # 波动率 (年化)
-            'data_days': int,         # 数据天数
-        }
-    """
+    """Sharpe ratio (Rp - Rf) / sigma; returns sharpe_ratio, annual_return, volatility, data_days."""
     history = database.get_equity_history(account_name)
     
     if len(history) < 2:
@@ -94,7 +86,7 @@ def calc_sharpe_ratio(account_name: str, risk_free_rate: float = 0.02) -> Dict[s
 
 
 # ============================================================
-# 最大回撤计算
+# Max drawdown
 # ============================================================
 
 def calc_max_drawdown(account_name: str) -> Dict[str, Any]:
@@ -182,7 +174,7 @@ def calc_max_drawdown(account_name: str) -> Dict[str, Any]:
 
 
 # ============================================================
-# 胜率/盈亏比计算
+# Trade stats (win rate, profit factor)
 # ============================================================
 
 def calc_trade_stats(account_name: str) -> Dict[str, Any]:
@@ -428,5 +420,5 @@ def get_full_analytics(account_name: str, quotes: Dict[str, Dict] = None) -> Dic
         'drawdown': calc_max_drawdown(account_name),
         'trade_stats': calc_trade_stats(account_name),
         'positions': calc_position_analysis(account_name, quotes),
-        'generated_at': datetime.now().isoformat(),
+        'generated_at': get_current_datetime_iso(),
     }

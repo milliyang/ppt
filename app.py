@@ -1,78 +1,74 @@
 """
-Paper Trade - 模拟交易平台
+Paper Trade: simulated trading platform; Flask app, Blueprint registration, static routes, WebSocket, scheduler, auth.
 
-主入口文件，负责:
-- Flask 应用初始化
-- 注册所有 Blueprint
-- 静态页面路由
-- WebSocket 事件
-- 定时任务
-- 用户认证
+Used for: standalone HTTP service; zuilow forwards orders via webhook; sim mode uses Simulation Time Service.
+
+Entry:
+    python app.py or flask run: setup_logging(), load env (LOG_LEVEL, DB_FILE, WEBHOOK_TOKEN, SIMULATION_TIME_URL), register Blueprints, SocketIO, scheduler. Port from env (default 11182).
+
+Features:
+    - Blueprints: api/account, trade, watchlist, webhook, analytics, opents; static; WebSocket; scheduler; auth (Flask-Login, WEBHOOK_TOKEN)
 """
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from pathlib import Path
 from flask import Flask, jsonify, send_from_directory, request, redirect, url_for
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_login import login_user, logout_user, login_required, current_user
 from dotenv import load_dotenv
+from core import utils as core_utils
 
 # Load environment variables
 load_dotenv()
 
 # ============================================================
-# 配置日志系统
+# Logging
 # ============================================================
 def setup_logging():
-    """配置日志系统"""
+    """Configure logging (file + console)."""
     log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
     log_file = os.getenv('LOG_FILE', 'run/logs/paper_trade.log')
     
-    # 确保日志目录存在
     log_path = Path(log_file)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # 配置根日志记录器
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level, logging.INFO))
-    
-    # 清除现有的处理器
     root_logger.handlers.clear()
     
-    # 创建格式化器
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
-    # 文件处理器
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setLevel(getattr(logging, log_level, logging.INFO))
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
     
-    # 控制台处理器（用于开发环境）
     console_handler = logging.StreamHandler()
     console_handler.setLevel(getattr(logging, log_level, logging.INFO))
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
     
-    logging.info(f"日志系统已初始化: 级别={log_level}, 文件={log_file}")
+    logging.info("Logging initialized: level=%s file=%s", log_level, log_file)
 
-# 初始化日志
+#
 setup_logging()
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY') or os.urandom(24).hex()
+# Different cookie name so zuilow and ppt can run in same browser without logging each other out
+app.config['SESSION_COOKIE_NAME'] = 'ppt_session'
 
 # Initialize extensions
 CORS(app, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# 静态文件目录
+# Static files
 STATIC_DIR = Path(__file__).parent / 'static'
 
 # ============================================================
@@ -83,7 +79,6 @@ from core import db as database
 from core.utils import get_quotes_batch
 from core.auth import init_login_manager, authenticate
 
-# 初始化 Flask-Login
 init_login_manager(app)
 
 # ============================================================
@@ -93,123 +88,124 @@ init_login_manager(app)
 from api import all_blueprints
 from api import webhook
 
-# 初始化需要 socketio 的模块
 webhook.init_socketio(socketio)
 
-# 注册所有 Blueprint
+#
 for bp in all_blueprints:
     app.register_blueprint(bp)
 
+
 # ============================================================
-# 定时任务 - 自动更新净值
+# Equity update (shared)
+# ============================================================
+
+def _update_all_accounts_equity():
+    """Update equity for all accounts. Uses get_equity_date() (sim or real). Skips dates before account first day."""
+    dms_base = (os.getenv('DMS_BASE_URL') or '').strip().rstrip('/')
+    date_for_db = core_utils.get_equity_date()
+    date_str = date_for_db.isoformat()
+    watchlist = {w['symbol']: w for w in database.get_watchlist()}
+    for acc in database.get_all_accounts():
+        min_date = database.get_min_equity_date(acc['name'])
+        if min_date and date_str < min_date:
+            logging.debug("[Tick] skip account=%s as_of=%s before first day %s", acc['name'], date_str, min_date)
+            continue
+        positions = database.get_positions(acc['name'])
+        symbols = list(positions.keys()) if positions else []
+        if not symbols:
+            continue
+        quotes = get_quotes_batch(symbols) if dms_base else {}
+        for sym in symbols:
+            q = quotes.get(sym, {})
+            if (q.get('price', 0) <= 0 or not q.get('valid', True)) and watchlist.get(sym) and (watchlist[sym].get('last_price') or 0) > 0:
+                quotes[sym] = {'symbol': sym, 'price': watchlist[sym]['last_price'], 'valid': True}
+            q2 = quotes.get(sym, {})
+            logging.info("[Tick] quote result: account=%s date=%s symbol=%s price=%s valid=%s error=%s",
+                         acc['name'], date_str, sym, q2.get('price'), q2.get('valid', True), q2.get('error'))
+        if quotes:
+            database.update_equity_history(acc['name'], quotes=quotes, as_of_date=date_for_db)
+        else:
+            database.update_equity_history(acc['name'], as_of_date=date_for_db)
+
+
+# ============================================================
+# Scheduler: only register jobs in real time; no jobs in sim mode
 # ============================================================
 
 def setup_scheduler():
-    """设置定时任务"""
+    """In sim mode register no jobs (equity driven by tick). In real time register equity Cron + OTS Cron."""
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.cron import CronTrigger
     except ImportError:
-        print("[Scheduler] APScheduler 未安装，跳过定时任务")
-        print("[Scheduler] 安装: pip install apscheduler")
+        logging.warning("[Scheduler] APScheduler not installed, skipping. Install: pip install apscheduler")
         return None
-    
+
+    if core_utils.is_sim_mode():
+        logging.debug("[Scheduler] Sim mode: no jobs registered; equity only via /api/scheduler/tick")
+        return None
+
     scheduler = BackgroundScheduler()
     
-    # ===== 净值更新定时任务 =====
-    # 从环境变量读取配置，默认美股时间
-    # 格式: "5:0,21:30,0:0" 表示 5:00, 21:30, 0:00
+    # Real time: equity Cron
     schedule_times = os.getenv('EQUITY_UPDATE_SCHEDULE', '5:0,21:30,0:0')
-    
     if schedule_times and schedule_times.lower() != 'off':
-        def auto_update_equity():
-            """自动更新所有账户净值"""
-            print(f"[Scheduler] 开始更新净值 {datetime.now().isoformat()}")
+        def _job_equity():
+            logging.info("[Scheduler] Starting equity update %s", core_utils.get_current_datetime_iso())
             try:
-                for acc in database.get_all_accounts():
-                    account_name = acc['name']
-                    positions = database.get_positions(account_name)
-                    
-                    if positions:
-                        symbols = list(positions.keys())
-                        quotes = get_quotes_batch(symbols)
-                        database.update_equity_history(account_name, quotes)
-                    else:
-                        database.update_equity_history(account_name)
-                        
-                print(f"[Scheduler] 净值更新完成")
+                _update_all_accounts_equity()
+                logging.info("[Scheduler] Equity update done")
             except Exception as e:
-                print(f"[Scheduler] 净值更新失败: {e}")
-        
-        # 解析时间配置
+                logging.exception("[Scheduler] Equity update failed: %s", e)
         for time_str in schedule_times.split(','):
             time_str = time_str.strip()
             if ':' in time_str:
                 hour, minute = time_str.split(':')
-                trigger = CronTrigger(hour=int(hour), minute=int(minute))
-                scheduler.add_job(auto_update_equity, trigger, id=f'equity_update_{hour}_{minute}')
-                print(f"[Scheduler] 添加净值更新任务: {hour}:{minute}")
+                scheduler.add_job(_job_equity, CronTrigger(hour=int(hour), minute=int(minute)), id=f'equity_update_{hour}_{minute}')
+                logging.info("[Scheduler] Added equity job: %s:%s", hour, minute)
     else:
-        print("[Scheduler] 净值更新已禁用 (EQUITY_UPDATE_SCHEDULE=off)")
-    
-    # ===== OpenTimestamps 定时任务 =====
-    # 从环境变量读取配置，支持多个时间点
-    # 格式: "16:0" 表示 16:00（单个时间点）
-    # 格式: "16:0,22:0" 表示 16:00 和 22:00（多个时间点，用逗号分隔）
-    # 格式: "16:0:us_market,22:0:hk_market" 表示带标签的多个时间点（可选标签）
+        logging.info("[Scheduler] Equity update disabled (EQUITY_UPDATE_SCHEDULE=off)")
+
+    # Real time: OTS timestamp Cron
     ots_schedule = os.getenv('OTS_TIMESTAMP_SCHEDULE', '16:0')
-    
     if ots_schedule and ots_schedule.lower() != 'off':
-        def create_daily_timestamp_with_label(label=None):
-            """创建每日时间戳（带标签）"""
-            def wrapper():
-                print(f"[Scheduler] 开始创建每日时间戳 {datetime.now().isoformat()}, label={label}")
+        def _create_daily_ots(label=None):
+            def _job():
+                logging.info("[Scheduler] Creating daily timestamp %s, label=%s", core_utils.get_current_datetime_iso(), label)
                 try:
                     from opents import service
                     result = service.create_daily_timestamp(label=label)
                     if result.get('success'):
-                        print(f"[Scheduler] 时间戳创建成功: {result.get('date')}, label={label}")
+                        logging.info("[Scheduler] Timestamp created: %s, label=%s", result.get('date'), label)
                     else:
-                        print(f"[Scheduler] 时间戳创建失败: {result.get('error')}")
+                        logging.warning("[Scheduler] Timestamp failed: %s", result.get('error'))
                 except Exception as e:
-                    print(f"[Scheduler] 时间戳创建异常: {e}")
-            return wrapper
-        
-        # 解析多个时间点配置
-        schedule_items = [item.strip() for item in ots_schedule.split(',')]
-        
-        for idx, schedule_item in enumerate(schedule_items):
-            # 支持格式: "16:0" 或 "16:0:us_market"
-            parts = schedule_item.split(':')
+                    logging.exception("[Scheduler] Timestamp error: %s", e)
+            return _job
+        for item in [x.strip() for x in ots_schedule.split(',')]:
+            parts = item.split(':')
             if len(parts) >= 2:
-                hour = int(parts[0])
-                minute = int(parts[1])
+                hour, minute = int(parts[0]), int(parts[1])
                 label = parts[2] if len(parts) >= 3 else None
-                
-                trigger = CronTrigger(hour=hour, minute=minute)
                 job_id = f'ots_timestamp_{hour}_{minute}' + (f'_{label}' if label else '')
-                job_func = create_daily_timestamp_with_label(label=label)
-                
-                scheduler.add_job(job_func, trigger, id=job_id)
-                print(f"[Scheduler] 添加时间戳任务: {hour}:{minute}" + (f" (label: {label})" if label else ""))
+                scheduler.add_job(_create_daily_ots(label=label), CronTrigger(hour=hour, minute=minute), id=job_id)
+                logging.info("[Scheduler] Added OTS job: %s:%s%s", hour, minute, f" (label: {label})" if label else "")
     else:
-        print("[Scheduler] 时间戳任务已禁用 (OTS_TIMESTAMP_SCHEDULE=off)")
-    
+        logging.info("[Scheduler] OTS timestamp disabled (OTS_TIMESTAMP_SCHEDULE=off)")
+
     scheduler.start()
-    print("[Scheduler] 定时任务已启动")
+    logging.info("[Scheduler] Scheduler started")
     return scheduler
 
-# 启动定时器 (仅在非测试环境)
-if os.getenv('FLASK_ENV') != 'testing':
-    _scheduler = setup_scheduler()
+_scheduler = setup_scheduler()
 
 # ============================================================
-# 登录/登出路由
+# Login / Logout routes
 # ============================================================
 
 @app.route('/login')
 def login_page():
-    """登录页面"""
+    """Login page"""
     if current_user.is_authenticated:
         return redirect('/')
     return send_from_directory(STATIC_DIR, 'login.html')
@@ -217,7 +213,7 @@ def login_page():
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
-    """登录 API"""
+    """Login API"""
     data = request.json or {}
     username = data.get('username', '')
     password = data.get('password', '')
@@ -229,19 +225,19 @@ def api_login():
             'status': 'ok',
             'user': {'username': user.username, 'role': user.role}
         })
-    return jsonify({'error': '用户名或密码错误'}), 401
+    return jsonify({'error': 'Invalid username or password'}), 401
 
 
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
-    """登出 API"""
+    """Logout API"""
     logout_user()
     return jsonify({'status': 'ok'})
 
 
 @app.route('/api/user')
 def api_user():
-    """获取当前用户信息"""
+    """Get current user info"""
     if current_user.is_authenticated:
         return jsonify({
             'authenticated': True,
@@ -258,42 +254,101 @@ def api_user():
 @app.route('/')
 @login_required
 def index():
-    """Dashboard 首页 (需登录)"""
+    """Dashboard (login required)"""
     return send_from_directory(STATIC_DIR, 'index.html')
 
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):
-    """提供静态文件"""
+    """Serve static files"""
     return send_from_directory(STATIC_DIR, filename)
 
 
 @app.route('/watchlist')
 @login_required
 def watchlist_page():
-    """行情监控页面 (需 admin)"""
+    """Watchlist page (admin only)"""
     if not current_user.is_admin:
         return redirect(url_for('index'))
     return send_from_directory(STATIC_DIR, 'watchlist.html')
 
 
-@app.route('/test')
+@app.route('/cash')
 @login_required
-def test_page():
-    """测试工具页面 (需 admin)"""
-    if os.getenv('ENABLE_TEST_API', 'true').lower() == 'false':
-        return redirect(url_for('index'))
+def cash_page():
+    """Cash operations: deposit / withdraw / reset account (admin only)."""
     if not current_user.is_admin:
         return redirect(url_for('index'))
-    return send_from_directory(STATIC_DIR, 'test.html')
+    return send_from_directory(STATIC_DIR, 'cash.html')
 
 
 @app.route('/ots')
 @login_required
 def ots_page():
-    """OpenTimestamps 管理页面 (所有登录用户可查看)"""
-    # 移除 admin 检查，允许所有登录用户查看
+    """OpenTimestamps page (any logged-in user)"""
     return send_from_directory(STATIC_DIR, 'ots.html')
+
+
+@app.route('/api/theme')
+def api_theme():
+    """Public client config: theme for UI. theme=simulate when SIMULATION_MODE or SIMULATION_TIME_URL set (red theme)."""
+    theme = 'simulate' if core_utils.is_sim_mode() else 'default'
+    return jsonify({'theme': theme})
+
+
+# Tick equity: one update per as_of_date (avoid duplicate updates on every tick)
+_tick_equity_done_dates: set = set()
+
+
+@app.route('/api/sim_now')
+def api_sim_now():
+    """Return current time (ISO). Via ctrl: sim = tick or fetch stime; real = now UTC."""
+    from core import utils as core_utils
+    now_iso = core_utils.get_sim_now_iso()
+    return jsonify({'now': now_iso}), 200
+
+
+@app.route('/api/scheduler/tick', methods=['POST'])
+def api_scheduler_tick():
+    """
+    Sim tick: called by stime after advance; updates all account equity by sim time.
+    Header X-Simulation-Time: ISO time (same as webhook); if missing, try stime GET /now.
+    When DMS_BASE_URL is set, quotes from DMS (last bar). Optional auth: WEBHOOK_TOKEN / X-Webhook-Token.
+    """
+    try:
+        if not core_utils.is_sim_mode():
+            return jsonify({'error': 'Not in simulation mode'}), 400
+
+        webhook_token = os.getenv('WEBHOOK_TOKEN')
+        if webhook_token:
+            token = request.headers.get('X-Webhook-Token') or (request.get_json(silent=True) or {}).get('token')
+            if token != webhook_token:
+                return jsonify({'error': 'Unauthorized'}), 401
+
+        sim_header = (request.headers.get('X-Simulation-Time') or '').strip()
+        if sim_header:
+            core_utils.set_sim_now_iso(sim_header)
+        # else: get_current_datetime_iso() uses ctrl, which fetches stime when tick context is empty
+
+        now_iso = core_utils.get_current_datetime_iso()
+        as_of_date = datetime.fromisoformat(now_iso.replace('Z', '+00:00')).date()
+        date_str = as_of_date.isoformat()
+        global _tick_equity_done_dates
+        if not _tick_equity_done_dates:
+            _tick_equity_done_dates = set(database.get_equity_history_dates())
+        if date_str in _tick_equity_done_dates:
+            logging.debug("[Tick] as_of_date=%s already updated, skip", date_str)
+            out = {'ok': True, 'as_of_date': date_str, 'skipped': True, 'as_of': now_iso}
+            return jsonify(out)
+        logging.info("[Tick] POST /api/scheduler/tick as_of=%s", now_iso)
+        _update_all_accounts_equity()
+        _tick_equity_done_dates.add(date_str)
+        logging.info("[Tick] equity updated as_of=%s", now_iso)
+        out = {'ok': True, 'as_of_date': date_str, 'as_of': now_iso}
+        return jsonify(out)
+    except Exception as e:
+        logging.exception("scheduler/tick failed: %s", e)
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @app.route('/api/health')
@@ -313,29 +368,30 @@ def info():
         'name': 'Paper Trade API',
         'version': '2.0.0',
         'endpoints': {
-            '/': 'Dashboard 交易界面',
-            '/watchlist': '行情监控页面',
-            '/test': '测试工具页面',
-            '/api/health': '健康检查',
-            '/api/accounts': 'GET - 账户列表 / POST - 创建账户',
-            '/api/accounts/switch': 'POST - 切换账户',
-            '/api/account': 'GET - 当前账户信息',
-            '/api/account/reset': 'POST - 重置当前账户',
-            '/api/positions': 'GET - 持仓列表',
-            '/api/orders': 'GET - 订单历史 / POST - 下单',
-            '/api/trades': 'GET - 成交记录',
-            '/api/equity': 'GET - 净值历史',
-            '/api/watchlist': '行情监控',
-            '/api/analytics': '绩效分析',
-            '/api/simulation': '交易模拟配置',
-            '/api/webhook': 'POST - Webhook 信号接收',
-            '/api/ots/history': 'GET - OpenTimestamps 历史记录',
-            '/api/ots/detail/<date>': 'GET - 获取指定日期的时间戳详情',
-            '/api/ots/record/<date>': 'GET - 下载原始记录文件',
-            '/api/ots/proof/<date>': 'GET - 下载证明文件',
-            '/api/ots/create': 'POST - 手动创建时间戳 (admin)',
-            '/api/ots/verify/<date>': 'POST - 验证时间戳 (admin)',
-            '/api/ots/info': 'GET - OpenTimestamps 服务信息',
+            '/': 'Dashboard',
+            '/watchlist': 'Watchlist page',
+            '/cash': 'Cash ops (deposit/withdraw/reset, admin)',
+            '/api/health': 'Health check',
+            '/api/accounts': 'GET - list accounts / POST - create account',
+            '/api/accounts/switch': 'POST - switch account',
+            '/api/account': 'GET - current account',
+            '/api/account/reset': 'POST - reset current account',
+            '/api/positions': 'GET - positions',
+            '/api/orders': 'GET - orders / POST - place order',
+            '/api/trades': 'GET - trades',
+            '/api/equity': 'GET - equity history',
+            '/api/scheduler/tick': 'POST - sim tick (stime, X-Simulation-Time)',
+            '/api/watchlist': 'Watchlist',
+            '/api/analytics': 'Analytics',
+            '/api/simulation': 'Simulation config',
+            '/api/webhook': 'POST - Webhook',
+            '/api/ots/history': 'GET - OTS history',
+            '/api/ots/detail/<date>': 'GET - OTS detail by date',
+            '/api/ots/record/<date>': 'GET - OTS record file',
+            '/api/ots/proof/<date>': 'GET - OTS proof file',
+            '/api/ots/create': 'POST - create OTS (admin)',
+            '/api/ots/verify/<date>': 'POST - verify OTS (admin)',
+            '/api/ots/info': 'GET - OTS info',
         }
     })
 
@@ -372,13 +428,12 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 11182))
     debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
     
-    # 初始化数据库
     database.init_db()
     
     print(f'\n=== Paper Trade Server ===')
     print(f'Dashboard: http://localhost:{port}/')
     print(f'Watchlist: http://localhost:{port}/watchlist')
-    print(f'Test Page: http://localhost:{port}/test')
+    print(f'Cash ops: http://localhost:{port}/cash')
     print(f'API Health: http://localhost:{port}/api/health')
     print(f'Debug: {debug}')
     print(f'==========================\n')

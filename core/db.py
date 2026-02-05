@@ -1,23 +1,54 @@
 """
-Paper Trade SQLite 数据库模块
+Paper Trade SQLite database: accounts, positions, orders, trades, equity history, watchlist.
+
+Used for: all PPT API and simulation; DB_FILE env (default run/db/paper_trade.db).
+
+Functions:
+    get_db_path() -> str
+    get_connection()   Context manager; commit on exit
+    get_current_account_name() / set_current_account(name) / list_accounts() / create_account(...) / delete_account(name)
+    get_positions(account) / update_position(...) / get_orders(account) / add_order(...) / get_trades(account) / add_trade(...)
+    get_equity_history(account) / append_equity(...) / get_watchlist() / add_watchlist(...) / etc.
+
+Features:
+    - Uses core.utils.get_current_datetime_iso / get_equity_date for sim time
+    - DEFAULT_CAPITAL, DEFAULT_WATCHLIST from env or defaults
 """
 import os
 import sqlite3
 from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
+import logging
+
+get_logger = logging.getLogger(__name__)
+
+# Use utils for current time so sim mode uses sim time
+def _now_iso():
+    from core.utils import get_current_datetime_iso
+    return get_current_datetime_iso()
+
+def _today_date():
+    from core.utils import get_equity_date
+    return get_equity_date()
+
+def _equity_date_for_init():
+    try:
+        return _today_date()
+    except Exception:
+        return None
 
 DB_FILE = os.getenv('DB_FILE', 'run/db/paper_trade.db')
 DEFAULT_CAPITAL = 1000000
 
-# 默认关注列表
+# Default watchlist (symbol, display name)
 DEFAULT_WATCHLIST = [
     ('GOOGL', 'Google'),
     ('SPY', 'S&P 500 ETF'),
     ('QQQ', 'Nasdaq 100 ETF'),
-    ('GLD', '黄金 ETF'),
-    ('SLV', '白银 ETF'),
-    ('0700.HK', '腾讯'),
+    ('GLD', 'Gold ETF'),
+    ('SLV', 'Silver ETF'),
+    ('HK.00700', 'Tencent'),
 ]
 
 
@@ -80,7 +111,7 @@ def init_db():
                 FOREIGN KEY (account_name) REFERENCES accounts(name)
             );
             
-            -- 成交表
+            -- 成交表（commission/slippage/realized_pnl 用于统计累积亏损）
             CREATE TABLE IF NOT EXISTS trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 account_name TEXT NOT NULL,
@@ -90,6 +121,9 @@ def init_db():
                 price REAL NOT NULL,
                 value REAL NOT NULL,
                 time TEXT NOT NULL,
+                commission REAL DEFAULT 0,
+                slippage REAL DEFAULT 0,
+                realized_pnl REAL DEFAULT 0,
                 FOREIGN KEY (account_name) REFERENCES accounts(name)
             );
             
@@ -122,10 +156,11 @@ def init_db():
             );
         ''')
         
-        # 初始化默认账户（如果不存在）
+        # 初始化默认账户（如果不存在）；模拟时用 stime 当前日期，否则用服务器当天
         cursor = conn.execute("SELECT COUNT(*) FROM accounts")
         if cursor.fetchone()[0] == 0:
-            create_account('default', DEFAULT_CAPITAL)
+            as_of = _equity_date_for_init()
+            create_account('default', DEFAULT_CAPITAL, as_of_date=as_of)
             set_current_account('default')
         
         # 初始化默认关注列表（如果为空）
@@ -136,26 +171,30 @@ def init_db():
                     "INSERT OR IGNORE INTO watchlist (symbol, name, status) VALUES (?, ?, 'pending')",
                     (symbol, name)
                 )
+            get_logger.info("db write init_db: default watchlist initialized symbols=%s", [s for s, _ in DEFAULT_WATCHLIST])
 
 
 # ============================================================
 # 账户操作
 # ============================================================
 
-def create_account(name: str, capital: float = DEFAULT_CAPITAL) -> bool:
-    """创建新账户"""
-    now = datetime.now()
+def create_account(name: str, capital: float = DEFAULT_CAPITAL, as_of_date=None) -> bool:
+    """Create account. as_of_date: sim date when in sim mode; else use get_equity_date() (real today)."""
+    now_str = _now_iso()
+    date_str = (as_of_date.strftime('%Y-%m-%d') if as_of_date is not None and hasattr(as_of_date, 'strftime')
+                else str(as_of_date)[:10] if as_of_date is not None else _today_date().strftime('%Y-%m-%d'))
     with get_connection() as conn:
         try:
             conn.execute(
                 "INSERT INTO accounts (name, initial_capital, cash, created_at) VALUES (?, ?, ?, ?)",
-                (name, capital, capital, now.isoformat())
+                (name, capital, capital, now_str)
             )
-            # 初始净值记录
+            # 初始净值记录（日期用 as_of_date 或当天，避免仿真时混入系统日期）
             conn.execute(
                 "INSERT INTO equity_history (account_name, date, equity, pnl, pnl_pct) VALUES (?, ?, ?, 0, 0)",
-                (name, now.strftime('%Y-%m-%d'), capital)
+                (name, date_str, capital)
             )
+            get_logger.info("db write create_account: name=%s capital=%s date=%s", name, capital, date_str)
             return True
         except sqlite3.IntegrityError:
             return False
@@ -170,7 +209,9 @@ def delete_account(name: str) -> bool:
         conn.execute("DELETE FROM trades WHERE account_name = ?", (name,))
         conn.execute("DELETE FROM equity_history WHERE account_name = ?", (name,))
         cursor = conn.execute("DELETE FROM accounts WHERE name = ?", (name,))
-        return cursor.rowcount > 0
+        n = cursor.rowcount
+        get_logger.info("db write delete_account: name=%s rows_deleted=%s", name, n)
+        return n > 0
 
 
 def get_account(name: str) -> Optional[Dict]:
@@ -194,35 +235,37 @@ def update_account_cash(name: str, cash: float):
     """更新账户现金"""
     with get_connection() as conn:
         conn.execute("UPDATE accounts SET cash = ? WHERE name = ?", (cash, name))
+        get_logger.info("db write update_account_cash: name=%s cash=%s", name, cash)
 
 
-def reset_account(name: str, capital: float = None):
-    """重置账户"""
+def reset_account(name: str, capital: float = None, as_of_date=None):
+    """重置账户。as_of_date 为仿真日期时传入，否则用服务器当天，避免仿真时混入 2026/1/31 等系统日期。"""
     with get_connection() as conn:
         account = get_account(name)
         if not account:
             return False
         
         new_capital = capital or account['initial_capital']
-        now = datetime.now()
+        now_str = _now_iso()
+        date_str = (as_of_date.strftime('%Y-%m-%d') if as_of_date is not None and hasattr(as_of_date, 'strftime')
+                    else str(as_of_date)[:10] if as_of_date is not None else _today_date().strftime('%Y-%m-%d'))
         
-        # 清空持仓、订单、成交
         conn.execute("DELETE FROM positions WHERE account_name = ?", (name,))
         conn.execute("DELETE FROM orders WHERE account_name = ?", (name,))
         conn.execute("DELETE FROM trades WHERE account_name = ?", (name,))
         conn.execute("DELETE FROM equity_history WHERE account_name = ?", (name,))
         
-        # 重置账户
         conn.execute(
             "UPDATE accounts SET initial_capital = ?, cash = ?, created_at = ? WHERE name = ?",
-            (new_capital, new_capital, now.isoformat(), name)
+            (new_capital, new_capital, now_str, name)
         )
         
-        # 初始净值
+        # 初始净值（日期用 as_of_date 或当天）
         conn.execute(
             "INSERT INTO equity_history (account_name, date, equity, pnl, pnl_pct) VALUES (?, ?, ?, 0, 0)",
-            (name, now.strftime('%Y-%m-%d'), new_capital)
+            (name, date_str, new_capital)
         )
+        get_logger.info("db write reset_account: name=%s new_capital=%s date=%s", name, new_capital, date_str)
         return True
 
 
@@ -245,6 +288,7 @@ def set_current_account(name: str):
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('current_account', ?)",
             (name,)
         )
+        get_logger.info("db write set_current_account: name=%s", name)
 
 
 # ============================================================
@@ -270,6 +314,7 @@ def update_position(account_name: str, symbol: str, qty: int, avg_price: float):
                 "DELETE FROM positions WHERE account_name = ? AND symbol = ?",
                 (account_name, symbol)
             )
+            get_logger.info("db write update_position: account=%s symbol=%s action=delete", account_name, symbol)
         else:
             conn.execute('''
                 INSERT INTO positions (account_name, symbol, qty, avg_price)
@@ -277,6 +322,8 @@ def update_position(account_name: str, symbol: str, qty: int, avg_price: float):
                 ON CONFLICT(account_name, symbol) 
                 DO UPDATE SET qty = ?, avg_price = ?
             ''', (account_name, symbol, qty, avg_price, qty, avg_price))
+            get_logger.info("db write update_position: account=%s symbol=%s qty=%s avg_price=%s",
+                            account_name, symbol, qty, avg_price)
 
 
 def get_position(account_name: str, symbol: str) -> Optional[Dict]:
@@ -295,16 +342,19 @@ def get_position(account_name: str, symbol: str) -> Optional[Dict]:
 # ============================================================
 
 def add_order(account_name: str, symbol: str, side: str, qty: int, 
-              price: float, status: str = 'filled', source: str = 'web') -> int:
-    """添加订单"""
-    now = datetime.now().isoformat()
+              price: float, status: str = 'filled', source: str = 'web', order_time=None) -> int:
+    """Add order. order_time: optional datetime for sim mode (X-Simulation-Time)."""
+    now = (order_time.isoformat() if order_time is not None else _now_iso())
     value = qty * price
     with get_connection() as conn:
         cursor = conn.execute('''
             INSERT INTO orders (account_name, symbol, side, qty, price, value, time, status, source)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (account_name, symbol, side, qty, price, value, now, status, source))
-        return cursor.lastrowid
+        order_id = cursor.lastrowid
+        get_logger.info("db write add_order: order_id=%s account=%s symbol=%s side=%s qty=%s price=%s",
+                        order_id, account_name, symbol, side, qty, price)
+        return order_id
 
 
 def get_orders(account_name: str, limit: int = 100) -> List[Dict]:
@@ -321,16 +371,20 @@ def get_orders(account_name: str, limit: int = 100) -> List[Dict]:
 # 成交操作
 # ============================================================
 
-def add_trade(account_name: str, symbol: str, side: str, qty: int, price: float) -> int:
-    """添加成交记录"""
-    now = datetime.now().isoformat()
+def add_trade(account_name: str, symbol: str, side: str, qty: int, price: float, order_time=None,
+              commission: float = 0, slippage: float = 0, realized_pnl: float = 0) -> int:
+    """Add trade. order_time: optional datetime for sim mode."""
+    now = (order_time.isoformat() if order_time is not None else _now_iso())
     value = qty * price
     with get_connection() as conn:
         cursor = conn.execute('''
-            INSERT INTO trades (account_name, symbol, side, qty, price, value, time)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (account_name, symbol, side, qty, price, value, now))
-        return cursor.lastrowid
+            INSERT INTO trades (account_name, symbol, side, qty, price, value, time, commission, slippage, realized_pnl)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (account_name, symbol, side, qty, price, value, now, commission, slippage, realized_pnl))
+        trade_id = cursor.lastrowid
+        get_logger.info("db write add_trade: trade_id=%s account=%s symbol=%s side=%s qty=%s price=%s commission=%s slippage=%s realized_pnl=%s",
+                        trade_id, account_name, symbol, side, qty, price, commission, slippage, realized_pnl)
+        return trade_id
 
 
 def get_trades(account_name: str, limit: int = 100) -> List[Dict]:
@@ -343,51 +397,98 @@ def get_trades(account_name: str, limit: int = 100) -> List[Dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_account_cost_stats(account_name: str) -> Dict[str, float]:
+    """
+    账户累积亏损统计：手续费、滑点、市场(已实现盈亏)。
+    从 trades 表 SUM(commission), SUM(slippage), SUM(realized_pnl)；旧数据无列时按 0 计。
+    """
+    with get_connection() as conn:
+        try:
+            cursor = conn.execute('''
+                SELECT COALESCE(SUM(commission), 0), COALESCE(SUM(slippage), 0), COALESCE(SUM(realized_pnl), 0)
+                FROM trades WHERE account_name = ?
+            ''', (account_name,))
+            row = cursor.fetchone()
+            if row is not None:
+                return {
+                    'total_commission': float(row[0]),
+                    'total_slippage': float(row[1]),
+                    'total_realized_pnl': float(row[2]),
+                }
+        except Exception:
+            pass
+    return {'total_commission': 0.0, 'total_slippage': 0.0, 'total_realized_pnl': 0.0}
+
+
 # ============================================================
 # 净值历史
 # ============================================================
 
-def update_equity_history(account_name: str, quotes: dict = None):
+def update_equity_history(account_name: str, quotes: dict = None, as_of_date=None):
     """
     更新净值历史
     
     Args:
         account_name: 账户名
-        quotes: 实时行情 {symbol: {'price': float}} 
+        quotes: 实时行情 {symbol: {'price': float}}
                 如果提供则用市价，否则用成本价
+        as_of_date: 净值日期 (datetime/date 或 'YYYY-MM-DD')；仿真时传 X-Simulation-Time 的日期，否则用服务器当天
     """
     account = get_account(account_name)
     if not account:
         return
-    
+
     positions = get_positions(account_name)
-    
-    # 计算持仓市值
+
+    # 计算持仓市值：优先行情价；行情失败（503/超时/无数据）或 price<=0 时用买入成本价
     position_value = 0
+    position_details = []
     for symbol, pos in positions.items():
         qty = pos['qty']
-        # 优先用实时价格，获取不到则用成本价
-        if quotes and symbol in quotes:
-            price = quotes[symbol].get('price', 0)
-            if price > 0:
-                position_value += qty * price
-                continue
-        # fallback 到成本价
-        position_value += qty * pos['avg_price']
-    
+        avg_price = pos['avg_price']
+        use_quote = (
+            quotes and symbol in quotes
+            and quotes[symbol].get('valid', True)
+            and (quotes[symbol].get('price') or 0) > 0
+        )
+        if use_quote:
+            price_used = quotes[symbol].get('price') or 0
+            mv = qty * price_used
+            position_value += mv
+            position_details.append((symbol, qty, avg_price, price_used, mv, 'quote'))
+        else:
+            mv = qty * avg_price
+            position_value += mv
+            price_used = avg_price
+            err = (quotes.get(symbol, {}).get('error') or 'no quote') if quotes else 'no quotes'
+            position_details.append((symbol, qty, avg_price, price_used, mv, 'cost(%s)' % err))
+
     equity = account['cash'] + position_value
     pnl = equity - account['initial_capital']
     pnl_pct = (pnl / account['initial_capital']) * 100 if account['initial_capital'] > 0 else 0
-    
-    today = datetime.now().strftime('%Y-%m-%d')
-    
+
+    if as_of_date is not None:
+        if hasattr(as_of_date, 'strftime'):
+            date_str = as_of_date.strftime('%Y-%m-%d')
+        else:
+            date_str = str(as_of_date)[:10]
+    else:
+        date_str = _today_date().strftime('%Y-%m-%d')
+
+    for sym, q, avg, pused, mv, src in position_details:
+        get_logger.info("equity position: account=%s date=%s symbol=%s qty=%s avg_price=%s price_used=%s source=%s mv=%s",
+                        account_name, date_str, sym, q, avg, pused, src, mv)
+    get_logger.info("update equity history: account=%s date=%s cash=%s position_value=%s equity=%s pnl=%s pnl_pct=%s",
+                    account_name, date_str, account['cash'], position_value, equity, pnl, pnl_pct)
+
+
     with get_connection() as conn:
         conn.execute('''
             INSERT INTO equity_history (account_name, date, equity, pnl, pnl_pct)
             VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(account_name, date) 
+            ON CONFLICT(account_name, date)
             DO UPDATE SET equity = ?, pnl = ?, pnl_pct = ?
-        ''', (account_name, today, equity, pnl, pnl_pct, equity, pnl, pnl_pct))
+        ''', (account_name, date_str, equity, pnl, pnl_pct, equity, pnl, pnl_pct))
 
 
 def get_equity_history(account_name: str) -> List[Dict]:
@@ -398,6 +499,45 @@ def get_equity_history(account_name: str) -> List[Dict]:
             (account_name,)
         )
         return [dict(row) for row in cursor.fetchall()]
+
+
+def get_equity_history_dates() -> set:
+    """返回 equity_history 中已存在的所有日期（任意账户），用于仿真模式下初始化「已更新日期」集合，避免重启后漏回填。"""
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT DISTINCT date FROM equity_history")
+        return {row[0] for row in cursor.fetchall() if row[0]}
+
+
+def get_min_equity_date(account_name: str) -> Optional[str]:
+    """返回该账户在 equity_history 中的最早日期（YYYY-MM-DD），用于仿真时跳过「早于账户首日」的 tick。"""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT MIN(date) FROM equity_history WHERE account_name = ?",
+            (account_name,)
+        )
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else None
+
+
+def get_equity_at_date(account_name: str, as_of_date) -> Optional[Dict]:
+    """
+    返回指定日期的净值记录；若无该日则返回该日之前最近一日的记录。
+    用于仿真模式下账户概览显示「当日 EOD 净值」。
+    as_of_date: date 或 'YYYY-MM-DD'
+    """
+    if as_of_date is None:
+        return None
+    if hasattr(as_of_date, 'strftime'):
+        date_str = as_of_date.strftime('%Y-%m-%d')
+    else:
+        date_str = str(as_of_date)[:10]
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT date, equity, pnl, pnl_pct FROM equity_history WHERE account_name = ? AND date <= ? ORDER BY date DESC LIMIT 1",
+            (account_name, date_str)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
 
 # ============================================================
@@ -495,6 +635,7 @@ def add_to_watchlist(symbol: str, name: str = None) -> bool:
                 "INSERT INTO watchlist (symbol, name, status) VALUES (?, ?, 'pending')",
                 (symbol.upper(), name or symbol)
             )
+            get_logger.info("db write add_to_watchlist: symbol=%s name=%s", symbol.upper(), name or symbol)
             return True
         except sqlite3.IntegrityError:
             return False
@@ -504,25 +645,29 @@ def remove_from_watchlist(symbol: str) -> bool:
     """从关注列表移除"""
     with get_connection() as conn:
         cursor = conn.execute("DELETE FROM watchlist WHERE symbol = ?", (symbol.upper(),))
-        return cursor.rowcount > 0
+        n = cursor.rowcount
+        get_logger.info("db write remove_from_watchlist: symbol=%s rows_deleted=%s", symbol.upper(), n)
+        return n > 0
 
 
 def update_watchlist_quote(symbol: str, price: float, name: str = None, 
                            status: str = 'ok', error: str = None):
-    """更新关注列表行情"""
-    now = datetime.now().isoformat()
+    """Update watchlist quote (last_price, last_update). Uses get_current_datetime_iso (sim/real)."""
+    now = _now_iso()
     with get_connection() as conn:
         conn.execute('''
             UPDATE watchlist 
             SET last_price = ?, last_update = ?, status = ?, error = ?, name = COALESCE(?, name)
             WHERE symbol = ?
         ''', (price, now, status, error, name, symbol.upper()))
+        get_logger.info("db write update_watchlist_quote: symbol=%s price=%s status=%s", symbol.upper(), price, status)
 
 
 def clear_watchlist():
     """清空关注列表"""
     with get_connection() as conn:
-        conn.execute("DELETE FROM watchlist")
+        cursor = conn.execute("DELETE FROM watchlist")
+        get_logger.info("db write clear_watchlist: rows_deleted=%s", cursor.rowcount)
 
 
 def init_default_watchlist() -> dict:
@@ -540,7 +685,7 @@ def init_default_watchlist() -> dict:
                 added.append(symbol)
             except sqlite3.IntegrityError:
                 skipped.append(symbol)
-    
+    get_logger.info("db write init_default_watchlist: added=%s skipped=%s", added, skipped)
     return {'added': added, 'skipped': skipped}
 
 

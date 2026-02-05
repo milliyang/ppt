@@ -1,5 +1,17 @@
 """
-交易模拟模块 - 滑点、手续费、部分成交
+PPT simulation: slippage, commission, partial fill, latency; config from config/simulation.yaml or defaults.
+
+Used for: order execution in webhook and trade API; apply slippage/commission to price/qty, optional partial fill.
+
+Functions:
+    load_config() -> Dict                    Load from config/simulation.yaml; merge presets
+    get_simulation_status() -> Dict          Current config and presets for API
+    apply_slippage(price, side, ...) -> float   Apply slippage to price
+    apply_commission(qty, price, ...) -> float   Apply commission
+    execute_order(account, symbol, side, qty, price=None, ...) -> Dict   Simulate fill; update position/order/trade/equity
+
+Features:
+    - Config: slippage, commission, partial_fill, latency; presets in YAML; execute_order updates db (position, order, trade, equity)
 """
 import os
 import random
@@ -7,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 
-# 默认配置
+# Default simulation config
 DEFAULT_CONFIG = {
     'slippage': {
         'enabled': True,
@@ -39,7 +51,7 @@ _config: Dict[str, Any] = {}
 
 
 def load_config() -> Dict[str, Any]:
-    """加载模拟配置"""
+    """Load simulation config from config/simulation.yaml; merge presets."""
     global _config
     
     config_path = Path(__file__).parent / "config" / "simulation.yaml"

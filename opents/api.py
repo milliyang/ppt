@@ -1,13 +1,15 @@
 """
-OpenTimestamps API 路由
+OpenTimestamps API: Blueprint for timestamp history, detail, record/proof download, create, verify.
 
-提供:
-- GET  /api/ots/history      - 获取时间戳历史
-- GET  /api/ots/detail/<date> - 获取指定日期的详细信息
-- GET  /api/ots/record/<date> - 下载原始记录文件
-- GET  /api/ots/proof/<date>  - 下载证明文件
-- POST /api/ots/create        - 手动创建时间戳 (admin)
-- POST /api/ots/verify/<date> - 验证时间戳 (admin)
+Used for: PPT web UI and admin; all routes under /api/ots; login_required or admin_required.
+
+Endpoints:
+    GET  /api/ots/history         Timestamp history (limit query)
+    GET  /api/ots/detail/<date>   Detail for one date
+    GET  /api/ots/record/<date>   Download record file
+    GET  /api/ots/proof/<date>    Download proof file
+    POST /api/ots/create          Create timestamp (admin)
+    POST /api/ots/verify/<date>   Verify timestamp (admin)
 """
 import os
 import sys
@@ -45,7 +47,7 @@ def get_history():
 @login_required_api
 def get_detail(date: str):
     """
-    获取指定日期的详细时间戳信息
+    Get detail for one timestamp date.
     
     格式：/api/ots/detail/2026-01-27_16-00-00 或 /api/ots/detail/2026-01-27_label
     """

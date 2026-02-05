@@ -1,4 +1,4 @@
-/* Paper Trade 样式 */
+/* Paper Trade styles */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -68,7 +68,7 @@ h1 { color: #58a6ff; font-size: 18px; font-weight: 600; }
 .stat-item { padding: 4px 0; }
 .stat-value { font-size: 14px; color: #f0f6fc; }
 
-/* 表格 */
+/* Table */
 .positions-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .positions-table th, .positions-table td { 
     text-align: left; 
@@ -79,7 +79,7 @@ h1 { color: #58a6ff; font-size: 18px; font-weight: 600; }
 .positions-table th { color: #8b949e; font-weight: 500; }
 .positions-table th.num, .positions-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* 表单 */
+/* Forms */
 .order-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .order-form input, .order-form select {
     padding: 6px 8px; 
@@ -95,7 +95,7 @@ h1 { color: #58a6ff; font-size: 18px; font-weight: 600; }
     border-color: #58a6ff;
 }
 
-/* 按钮 */
+/* Buttons */
 .btn { 
     padding: 6px 12px; 
     border: none; 
@@ -117,14 +117,14 @@ h1 { color: #58a6ff; font-size: 18px; font-weight: 600; }
 }
 .btn-row .btn { flex: 1; }
 
-/* 交易记录 */
+/* Trades */
 .trades { max-height: 150px; overflow-y: auto; font-size: 11px; }
 .trade-item { padding: 4px 0; border-bottom: 1px solid #21262d; }
 .trade-buy { color: #3fb950; }
 .trade-sell { color: #f85149; }
 .empty { color: #8b949e; font-style: italic; }
 
-/* 账户选择器 */
+/* Account bar */
 .account-bar {
     display: flex;
     align-items: center;
@@ -162,7 +162,7 @@ h1 { color: #58a6ff; font-size: 18px; font-weight: 600; }
 .account-bar .btn-del:hover { background: #f85149; }
 .account-label { color: #8b949e; font-size: 11px; }
 
-/* 导出按钮 */
+/* Export buttons */
 .export-btn {
     float: right;
     font-size: 10px;
@@ -176,14 +176,14 @@ h1 { color: #58a6ff; font-size: 18px; font-weight: 600; }
 }
 .export-btn:hover { background: #21262d; }
 
-/* Canvas 图表 */
+/* Chart canvas */
 #equity-chart {
     width: 100%;
     display: block;
     cursor: crosshair;
 }
 
-/* 图表悬浮提示 */
+/* Chart tooltip */
 .chart-tooltip {
     position: fixed;
     display: none;
@@ -196,4 +196,35 @@ h1 { color: #58a6ff; font-size: 18px; font-weight: 600; }
     pointer-events: none;
     z-index: 1000;
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+/* Header/nav: default colors (theme overrides below) */
+.header .header-title,
+.header h1 { color: #f0f6fc; }
+.header .nav-link { color: #58a6ff; }
+.header .nav-link:hover { color: #79c0ff; }
+.header .nav-link.current { color: #8b949e; }
+
+/* Theme: simulate (red accents when SIMULATION_MODE or SIMULATION_TIME_URL set) */
+[data-theme=simulate] h1 { color: #f85149; }
+[data-theme=simulate] .header .header-title,
+[data-theme=simulate] .header h1 { color: #f85149; }
+[data-theme=simulate] .header .nav-link { color: #f85149; }
+[data-theme=simulate] .header .nav-link:hover { color: #ff7b72; }
+[data-theme=simulate] .header .nav-link.current { color: #8b949e; }
+[data-theme=simulate] .card h2 { color: #f85149; }
+[data-theme=simulate] a { color: #f85149; }
+[data-theme=simulate] a:hover { color: #ff7b72; }
+[data-theme=simulate] .btn-buy { background: #da3633; }
+[data-theme=simulate] .btn-buy:hover { background: #b62324; }
+[data-theme=simulate] .btn-primary { background: #da3633; }
+[data-theme=simulate] .btn-primary:hover { background: #b62324; }
+
+/* Footer time: monospace for aligned Real_ Time / Trade Time (match ZuiLow) */
+.footer-time {
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #8b949e;
+    letter-spacing: 0.02em;
+    margin-top: 12px;
 }

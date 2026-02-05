@@ -24,5 +24,11 @@ Write-Host "Starting Paper Trade service..." -ForegroundColor Green
 Write-Host "Access URL: http://0.0.0.0:11182" -ForegroundColor Cyan
 Write-Host ""
 
+# Use a single .pycache directory under project root
+$env:PYTHONPYCACHEPREFIX = "$PSScriptRoot\.pycache"
+$env:DMS_BASE_URL = "http://mongkok:11183"
+# If DMS returns 401, set DMS_API_KEY to match DMS server (same value as DMS's env DMS_API_KEY). Or add to .env.
+$env:DMS_API_KEY = "your-shared-secret"
+
 # Start Flask (via socketio)
 python app.py

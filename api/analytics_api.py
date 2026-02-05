@@ -1,14 +1,16 @@
 """
-绩效分析 & 交易模拟配置 API
+Analytics and simulation config API: full analytics, Sharpe, drawdown, trade stats, position analysis; simulation config.
 
-路由:
-- GET  /api/analytics           - 完整绩效分析 (登录)
-- GET  /api/analytics/sharpe    - 夏普比率 (登录)
-- GET  /api/analytics/drawdown  - 最大回撤 (登录)
-- GET  /api/analytics/trades    - 交易统计 (登录)
-- GET  /api/analytics/positions - 持仓分析 (登录)
-- GET  /api/simulation          - 交易模拟配置 (登录)
-- POST /api/simulation/reload   - 重载模拟配置 (admin)
+Used for: PPT web UI analytics and simulation config; analytics from core.analytics, config from core.simulation.
+
+Endpoints:
+    GET  /api/analytics           Full analytics (login)
+    GET  /api/analytics/sharpe    Sharpe ratio (login)
+    GET  /api/analytics/drawdown  Max drawdown (login)
+    GET  /api/analytics/trades    Trade stats (login)
+    GET  /api/analytics/positions Position analysis (login)
+    GET  /api/simulation          Simulation config (login)
+    POST /api/simulation/reload   Reload simulation config (admin)
 """
 from flask import Blueprint, jsonify, request
 from core import db as database
@@ -23,18 +25,18 @@ bp = Blueprint('analytics_api', __name__)
 @bp.route('/api/simulation', methods=['GET'])
 @login_required_api
 def get_simulation_config():
-    """获取交易模拟配置状态"""
+    """Get simulation config status."""
     return jsonify(simulation.get_simulation_status())
 
 
 @bp.route('/api/simulation/reload', methods=['POST'])
 @admin_required
 def reload_simulation_config():
-    """重新加载模拟配置文件 (admin)"""
+    """Reload simulation config file (admin)."""
     simulation.load_config()
     return jsonify({
         'status': 'ok',
-        'message': '配置已重新加载',
+        'message': 'Config reloaded',
         'config': simulation.get_simulation_status()
     })
 
@@ -43,39 +45,29 @@ def reload_simulation_config():
 @login_required_api
 def get_analytics():
     """
-    获取完整绩效分析
-    
-    Returns:
-        - sharpe: 夏普比率
-        - drawdown: 最大回撤
-        - trade_stats: 交易统计 (胜率/盈亏比)
-        - positions: 持仓分析
-    
-    Query params:
-        - realtime: 是否获取实时行情 (默认 false，使用 watchlist 缓存)
+    Full analytics. Returns sharpe, drawdown, trade_stats, positions.
+    Query: realtime=true to fetch quotes from ZuiLow; else use watchlist cache (sim/live same logic).
     """
     account_name = database.get_current_account_name()
     positions = database.get_positions(account_name)
-    
+
     quotes = {}
     if request.args.get('realtime', 'false').lower() == 'true':
-        # 实时模式：获取最新行情
         if positions:
             quotes = get_quotes_batch(list(positions.keys()))
     else:
-        # 非实时模式：从 watchlist 读取缓存价格
         watchlist = {w['symbol']: w for w in database.get_watchlist()}
         for symbol in positions.keys():
             if symbol in watchlist and watchlist[symbol].get('last_price'):
                 quotes[symbol] = {'price': watchlist[symbol]['last_price']}
-    
+
     return jsonify(analytics.get_full_analytics(account_name, quotes))
 
 
 @bp.route('/api/analytics/sharpe', methods=['GET'])
 @login_required_api
 def get_sharpe():
-    """获取夏普比率"""
+    """Get Sharpe ratio."""
     account_name = database.get_current_account_name()
     return jsonify(analytics.calc_sharpe_ratio(account_name))
 
@@ -83,7 +75,7 @@ def get_sharpe():
 @bp.route('/api/analytics/drawdown', methods=['GET'])
 @login_required_api
 def get_drawdown():
-    """获取最大回撤"""
+    """Get max drawdown."""
     account_name = database.get_current_account_name()
     return jsonify(analytics.calc_max_drawdown(account_name))
 
@@ -91,7 +83,7 @@ def get_drawdown():
 @bp.route('/api/analytics/trades', methods=['GET'])
 @login_required_api
 def get_trade_stats():
-    """获取交易统计"""
+    """Get trade stats."""
     account_name = database.get_current_account_name()
     return jsonify(analytics.calc_trade_stats(account_name))
 
@@ -99,15 +91,14 @@ def get_trade_stats():
 @bp.route('/api/analytics/positions', methods=['GET'])
 @login_required_api
 def get_position_analysis():
-    """获取持仓分析 (使用 watchlist 缓存价格)"""
+    """Get position analysis (uses watchlist cached prices)."""
     account_name = database.get_current_account_name()
     positions = database.get_positions(account_name)
-    
-    # 从 watchlist 读取缓存价格
+
     quotes = {}
     watchlist = {w['symbol']: w for w in database.get_watchlist()}
     for symbol in positions.keys():
         if symbol in watchlist and watchlist[symbol].get('last_price'):
             quotes[symbol] = {'price': watchlist[symbol]['last_price']}
-    
+
     return jsonify(analytics.calc_position_analysis(account_name, quotes))

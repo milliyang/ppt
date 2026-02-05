@@ -1,15 +1,14 @@
 /**
- * Paper Trade 前端逻辑
+ * Paper Trade frontend logic
  */
 
-// 当前用户信息
 let currentUser = { authenticated: false, role: 'viewer' };
 
 function formatMoney(n) { 
     return '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2}); 
 }
 
-// ========== 用户认证 ==========
+// ========== Auth ==========
 
 async function loadUser() {
     try {
@@ -21,7 +20,7 @@ async function loadUser() {
         currentUser = await res.json();
         updateUIByRole();
     } catch (e) {
-        console.error('加载用户信息失败:', e);
+        console.error('Load user failed:', e);
         window.location.href = '/login';
     }
 }
@@ -29,12 +28,11 @@ async function loadUser() {
 function updateUIByRole() {
     const isAdmin = currentUser.role === 'admin';
     
-    // 显示/隐藏需要 admin 权限的元素
+    // Show/hide admin-only elements
     document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = isAdmin ? '' : 'none';
     });
     
-    // 显示用户信息
     const userInfo = document.getElementById('user-info');
     if (userInfo) {
         userInfo.textContent = `${currentUser.username} (${currentUser.role})`;
@@ -46,12 +44,13 @@ async function logout() {
     window.location.href = '/login';
 }
 
-// ========== 账户管理 ==========
+// ========== Account ==========
 
 async function loadAccounts() {
     const res = await fetch('/api/accounts');
     const data = await res.json();
     const select = document.getElementById('account-select');
+    if (!select) return;
     select.innerHTML = data.accounts.map(a => 
         `<option value="${a.name}" ${a.is_current ? 'selected' : ''}>${a.name} (${formatMoney(a.total_value)}, ${a.pnl >= 0 ? '+' : ''}${a.pnl_pct}%)</option>`
     ).join('');
@@ -68,9 +67,9 @@ async function switchAccount() {
 }
 
 async function createAccount() {
-    const name = prompt('输入账户名称:');
+    const name = prompt('Account name:');
     if (!name) return;
-    const capital = prompt('初始资金 (默认 100 万):', '1000000');
+    const capital = prompt('Initial capital (default 1M):', '1000000');
     const res = await fetch('/api/accounts', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -83,7 +82,7 @@ async function createAccount() {
 
 async function deleteAccount() {
     const name = document.getElementById('account-select').value;
-    if (!confirm(`确定删除账户 "${name}"？`)) return;
+    if (!confirm(`Delete account "${name}"?`)) return;
     const res = await fetch(`/api/accounts/${name}`, {method: 'DELETE'});
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
@@ -93,22 +92,42 @@ async function deleteAccount() {
 async function loadAccount() {
     const res = await fetch('/api/account');
     const data = await res.json();
-    document.getElementById('total-value').textContent = formatMoney(data.total_value);
-    document.getElementById('cash').textContent = formatMoney(data.cash);
-    document.getElementById('position-value').textContent = formatMoney(data.position_value);
-    document.getElementById('pnl').textContent = formatMoney(data.pnl);
-    document.getElementById('pnl').className = 'stat-value ' + (data.pnl >= 0 ? 'positive' : 'negative');
-    document.getElementById('pnl-pct').textContent = data.pnl_pct.toFixed(2) + '%';
-    document.getElementById('pnl-pct').className = 'stat-value ' + (data.pnl >= 0 ? 'positive' : 'negative');
+    const totalValue = document.getElementById('total-value');
+    const cash = document.getElementById('cash');
+    const positionValue = document.getElementById('position-value');
+    const pnl = document.getElementById('pnl');
+    const pnlPct = document.getElementById('pnl-pct');
+    if (totalValue) totalValue.textContent = formatMoney(data.total_value);
+    if (cash) cash.textContent = formatMoney(data.cash);
+    if (positionValue) positionValue.textContent = formatMoney(data.position_value);
+    if (pnl) {
+        pnl.textContent = formatMoney(data.pnl);
+        pnl.className = 'stat-value ' + (data.pnl >= 0 ? 'positive' : 'negative');
+    }
+    if (pnlPct) {
+        pnlPct.textContent = data.pnl_pct.toFixed(2) + '%';
+        pnlPct.className = 'stat-value ' + (data.pnl >= 0 ? 'positive' : 'negative');
+    }
+    // Cost breakdown: commission, slippage, realized P&L
+    const cs = data.cost_stats || {};
+    const el = (id) => document.getElementById(id);
+    if (el('cost-commission')) el('cost-commission').textContent = formatMoney(-(cs.total_commission || 0));
+    if (el('cost-slippage')) el('cost-slippage').textContent = formatMoney(-(cs.total_slippage || 0));
+    const rp = cs.total_realized_pnl != null ? cs.total_realized_pnl : 0;
+    const costRealized = el('cost-realized');
+    if (costRealized) {
+        costRealized.textContent = (rp >= 0 ? '+' : '') + formatMoney(rp);
+        costRealized.className = 'stat-value ' + (rp >= 0 ? 'positive' : 'negative');
+    }
 }
 
 async function resetAccount() {
-    if (!confirm('确定重置账户？所有数据将清空！')) return;
+    if (!confirm('Reset account? All data will be cleared!')) return;
     await fetch('/api/account/reset', {method: 'POST'});
     loadAll();
 }
 
-// ========== 持仓 ==========
+// ========== Positions ==========
 
 async function loadPositions(realtime = false) {
     const url = realtime ? '/api/positions?realtime=true' : '/api/positions';
@@ -116,9 +135,10 @@ async function loadPositions(realtime = false) {
     const data = await res.json();
     const tbody = document.getElementById('positions-body');
     const summary = document.getElementById('positions-summary');
+    if (!tbody || !summary) return;
     
     if (!data.positions.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无持仓</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No positions</td></tr>';
         summary.innerHTML = '';
         return;
     }
@@ -136,7 +156,7 @@ async function loadPositions(realtime = false) {
     if (data.summary) {
         const s = data.summary;
         const pnlClass = s.total_pnl >= 0 ? 'positive' : 'negative';
-        summary.innerHTML = `总成本: ${formatMoney(s.total_cost)} | 市值: ${formatMoney(s.total_market_value)} | 盈亏: <span class="${pnlClass}">${s.total_pnl >= 0 ? '+' : ''}${formatMoney(s.total_pnl)} (${s.total_pnl_pct >= 0 ? '+' : ''}${s.total_pnl_pct.toFixed(2)}%)</span>`;
+        summary.innerHTML = `Cost: ${formatMoney(s.total_cost)} | Value: ${formatMoney(s.total_market_value)} | P&L: <span class="${pnlClass}">${s.total_pnl >= 0 ? '+' : ''}${formatMoney(s.total_pnl)} (${s.total_pnl_pct >= 0 ? '+' : ''}${s.total_pnl_pct.toFixed(2)}%)</span>`;
     } else {
         summary.innerHTML = '';
     }
@@ -146,15 +166,16 @@ async function loadPositionsRealtime() {
     await loadPositions(true);
 }
 
-// ========== 交易 ==========
+// ========== Trades ==========
 
 async function loadTrades() {
     const res = await fetch('/api/trades');
     const data = await res.json();
     const list = document.getElementById('trades-list');
+    if (!list) return;
     list.innerHTML = data.trades.slice(-20).reverse().map(t => 
         `<div class="trade-item trade-${t.side}">${t.time.split('T')[1].split('.')[0]} ${t.side.toUpperCase()} ${t.symbol} ${t.qty}@${t.price}</div>`
-    ).join('') || '<div style="color:#8b949e">暂无成交</div>';
+    ).join('') || '<div style="color:#8b949e">No trades</div>';
 }
 
 async function placeOrder() {
@@ -177,7 +198,7 @@ async function placeOrder() {
     document.getElementById('price').value = '';
 }
 
-// ========== 收益曲线 ==========
+// ========== Equity chart ==========
 
 async function loadEquityChart() {
     const res = await fetch('/api/equity');
@@ -185,12 +206,14 @@ async function loadEquityChart() {
     drawChart(data.history, data.initial_capital);
 }
 
-// 全局存储图表数据供鼠标交互使用
+// Chart data for tooltip
 let chartData = { history: [], padding: {}, W: 0, H: 0, chartW: 0, chartH: 0, minPnl: 0, maxPnl: 0, range: 1 };
 
 function drawChart(history, initialCapital) {
     const canvas = document.getElementById('equity-chart');
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     const W = canvas.width = canvas.offsetWidth || canvas.parentElement.offsetWidth;
     const H = canvas.height = 220;
     
@@ -199,7 +222,7 @@ function drawChart(history, initialCapital) {
     if (!history || history.length < 1) {
         ctx.fillStyle = '#8b949e';
         ctx.font = '12px sans-serif';
-        ctx.fillText('暂无数据', W/2 - 30, H/2);
+        ctx.fillText('No data', W/2 - 30, H/2);
         chartData.history = [];
         return;
     }
@@ -208,24 +231,24 @@ function drawChart(history, initialCapital) {
     const chartW = W - padding.left - padding.right;
     const chartH = H - padding.top - padding.bottom;
     
-    // 计算收益率范围
+    // Return range
     const pnlPcts = history.map(h => h.pnl_pct);
     const dataMin = Math.min(...pnlPcts);
     const dataMax = Math.max(...pnlPcts);
-    // 增加 10% 边距，确保包含 0
+    // 10% margin, include 0
     const margin = Math.max((dataMax - dataMin) * 0.1, 1);
     const minPnl = Math.min(0, dataMin - margin);
     const maxPnl = Math.max(0, dataMax + margin);
     const range = maxPnl - minPnl;
     
-    // 保存数据供鼠标交互
+    // Store for tooltip
     chartData = { history, padding, W, H, chartW, chartH, minPnl, maxPnl, range };
     
     const isPositive = pnlPcts[pnlPcts.length-1] >= 0;
     const mainColor = isPositive ? '#3fb950' : '#f85149';
     const lightColor = isPositive ? 'rgba(63,185,80,0.15)' : 'rgba(248,81,73,0.15)';
     
-    // 绘制水平网格线和Y轴标签
+    // Grid and Y labels
     ctx.fillStyle = '#6e7681';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'right';
@@ -235,7 +258,7 @@ function drawChart(history, initialCapital) {
         const value = maxPnl - (range * i / gridLines);
         const y = padding.top + (chartH * i / gridLines);
         
-        // 网格线
+        // Grid
         ctx.strokeStyle = i === 0 || i === gridLines ? '#30363d' : '#21262d';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -243,12 +266,12 @@ function drawChart(history, initialCapital) {
         ctx.lineTo(W - padding.right, y);
         ctx.stroke();
         
-        // Y轴标签
+        // Y label
         const label = value >= 0 ? `+${value.toFixed(1)}%` : `${value.toFixed(1)}%`;
         ctx.fillText(label, padding.left - 8, y + 3);
     }
     
-    // 零线（加粗）
+    // Zero line
     const zeroY = padding.top + chartH * (maxPnl / range);
     if (zeroY > padding.top && zeroY < H - padding.bottom) {
         ctx.strokeStyle = '#484f58';
@@ -259,7 +282,7 @@ function drawChart(history, initialCapital) {
         ctx.stroke();
     }
     
-    // X轴时间标签
+    // X labels
     ctx.fillStyle = '#6e7681';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
@@ -272,13 +295,13 @@ function drawChart(history, initialCapital) {
         ctx.fillText(dateStr, x, H - 12);
     }
     
-    // 计算曲线点
+    // Curve points
     const points = history.map((h, i) => ({
         x: padding.left + (i / Math.max(history.length - 1, 1)) * chartW,
         y: padding.top + chartH * ((maxPnl - h.pnl_pct) / range)
     }));
     
-    // 渐变填充
+    // Gradient fill
     const gradient = ctx.createLinearGradient(0, padding.top, 0, H - padding.bottom);
     gradient.addColorStop(0, lightColor);
     gradient.addColorStop(1, 'rgba(13,17,23,0)');
@@ -288,7 +311,7 @@ function drawChart(history, initialCapital) {
     points.forEach((p, i) => {
         if (i === 0) ctx.lineTo(p.x, p.y);
         else {
-            // 平滑曲线
+            // Smooth curve
             const prev = points[i - 1];
             const cpX = (prev.x + p.x) / 2;
             ctx.quadraticCurveTo(prev.x, prev.y, cpX, (prev.y + p.y) / 2);
@@ -300,7 +323,7 @@ function drawChart(history, initialCapital) {
     ctx.fillStyle = gradient;
     ctx.fill();
     
-    // 绘制曲线
+    // Draw curve
     ctx.strokeStyle = mainColor;
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
@@ -317,7 +340,7 @@ function drawChart(history, initialCapital) {
     });
     ctx.stroke();
     
-    // 最后一个点的高亮圆点
+    // Last point highlight
     const lastPoint = points[points.length - 1];
     ctx.beginPath();
     ctx.arc(lastPoint.x, lastPoint.y, 5, 0, Math.PI * 2);
@@ -327,7 +350,7 @@ function drawChart(history, initialCapital) {
     ctx.lineWidth = 2;
     ctx.stroke();
     
-    // 当前值标签
+    // Current value label
     const last = history[history.length - 1];
     ctx.fillStyle = mainColor;
     ctx.font = 'bold 13px -apple-system, sans-serif';
@@ -335,10 +358,11 @@ function drawChart(history, initialCapital) {
     ctx.fillText(`${last.pnl_pct >= 0 ? '+' : ''}${last.pnl_pct.toFixed(2)}%`, lastPoint.x + 10, lastPoint.y + 4);
 }
 
-// 鼠标悬浮显示详情
+// Tooltip on hover
 function setupChartHover() {
     const canvas = document.getElementById('equity-chart');
     const tooltip = document.getElementById('chart-tooltip');
+    if (!canvas || !tooltip) return;
     
     canvas.addEventListener('mousemove', (e) => {
         if (!chartData.history || chartData.history.length < 1) return;
@@ -349,36 +373,36 @@ function setupChartHover() {
         
         const { history, padding, chartW, chartH, maxPnl, range, W, H } = chartData;
         
-        // 检查是否在图表区域内
+        // Hit test
         if (x < padding.left || x > W - padding.right) {
             tooltip.style.display = 'none';
             return;
         }
         
-        // 计算对应的数据点索引
+        // Data index
         const ratio = (x - padding.left) / chartW;
         const idx = Math.round(ratio * (history.length - 1));
         const clampedIdx = Math.max(0, Math.min(history.length - 1, idx));
         const point = history[clampedIdx];
         
-        // 计算该点的位置
+        // Point pos
         const pointX = padding.left + (clampedIdx / Math.max(history.length - 1, 1)) * chartW;
         const pointY = padding.top + chartH * ((maxPnl - point.pnl_pct) / range);
         
-        // 显示tooltip
+        // Show tooltip
         const pnlClass = point.pnl_pct >= 0 ? 'positive' : 'negative';
         const pnlSign = point.pnl_pct >= 0 ? '+' : '';
         tooltip.innerHTML = `
             <div style="font-weight:600;margin-bottom:4px;">${point.date}</div>
-            <div>净值: $${point.equity.toLocaleString()}</div>
-            <div class="${pnlClass}">收益: ${pnlSign}${point.pnl_pct.toFixed(2)}%</div>
+            <div>Equity: $${point.equity.toLocaleString()}</div>
+            <div class="${pnlClass}">Return: ${pnlSign}${point.pnl_pct.toFixed(2)}%</div>
         `;
         
-        // 定位tooltip
+        // Position tooltip
         let tooltipX = rect.left + pointX + 10;
         let tooltipY = rect.top + pointY - 40;
         
-        // 防止超出右边界
+        // Clamp right
         if (tooltipX + 120 > window.innerWidth) {
             tooltipX = rect.left + pointX - 130;
         }
@@ -387,33 +411,35 @@ function setupChartHover() {
         tooltip.style.top = tooltipY + 'px';
         tooltip.style.display = 'block';
         
-        // 重绘图表并添加指示线
+        // Redraw with indicator
         drawChart(history);
         drawIndicator(clampedIdx);
     });
     
     canvas.addEventListener('mouseleave', () => {
         tooltip.style.display = 'none';
-        // 重绘图表（移除指示线）
+        // Redraw without indicator
         if (chartData.history && chartData.history.length > 0) {
             drawChart(chartData.history);
         }
     });
 }
 
-// 绘制指示线（在已有图表上叠加）
+// Draw indicator line
 function drawIndicator(highlightIdx) {
     const { history, padding, W, H, chartW, chartH, maxPnl, range } = chartData;
     if (!history || history.length < 1) return;
     
     const canvas = document.getElementById('equity-chart');
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     
-    // 计算位置
+    // Position
     const x = padding.left + (highlightIdx / Math.max(history.length - 1, 1)) * chartW;
     const y = padding.top + chartH * ((maxPnl - history[highlightIdx].pnl_pct) / range);
     
-    // 垂直虚线
+    // Vertical line
     ctx.strokeStyle = '#58a6ff';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
@@ -423,7 +449,7 @@ function drawIndicator(highlightIdx) {
     ctx.stroke();
     ctx.setLineDash([]);
     
-    // 高亮点（更大）
+    // Highlight dot
     ctx.beginPath();
     ctx.arc(x, y, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#58a6ff';
@@ -433,40 +459,40 @@ function drawIndicator(highlightIdx) {
     ctx.stroke();
 }
 
-// ========== 净值更新 ==========
+// ========== Equity update ==========
 
 async function updateEquity() {
     const btn = event.target;
     const originalText = btn.textContent;
-    btn.textContent = '更新中...';
+    btn.textContent = 'Updating...';
     btn.disabled = true;
     
     try {
         const res = await fetch('/api/equity/update', {method: 'POST'});
         const data = await res.json();
         
-        // 显示结果（不弹窗）
+        // Show result (no alert)
         if (data.failed_symbols && data.failed_symbols.length > 0) {
-            btn.textContent = `✓ ${data.failed_symbols.length}个失败`;
-            btn.title = `失败: ${data.failed_symbols.join(', ')} (用成本价)`;
+            btn.textContent = `✓ ${data.failed_symbols.length} failed`;
+            btn.title = `Failed: ${data.failed_symbols.join(', ')} (cost price used)`;
         } else {
-            btn.textContent = '✓ 已更新';
+            btn.textContent = '✓ Updated';
         }
         setTimeout(() => { 
             btn.textContent = originalText; 
-            btn.title = '用实时价格更新净值';
+            btn.title = 'Update equity with market price';
         }, 3000);
         
-        // 刷新数据
+        // Refresh data
         loadEquityChart();
         loadAccount();
         loadAnalytics();
     } catch (e) {
-        btn.textContent = '✗ 失败';
+        btn.textContent = '✗ Failed';
         btn.title = e.message;
         setTimeout(() => { 
             btn.textContent = originalText;
-            btn.title = '用实时价格更新净值';
+            btn.title = 'Update equity with market price';
         }, 3000);
     } finally {
         btn.disabled = false;
@@ -474,42 +500,56 @@ async function updateEquity() {
 }
 
 
-// ========== 交易模拟 ==========
+// ========== Simulation ==========
 
 async function loadSimulation() {
     try {
         const res = await fetch('/api/simulation');
         const data = await res.json();
         
-        // 预设名称
-        document.getElementById('sim-preset').textContent = data.preset ? 
-            `[${data.preset}]` : '[自定义]';
+        // Preset name
+        const simPreset = document.getElementById('sim-preset');
+        if (simPreset) {
+            simPreset.textContent = data.preset ? `[${data.preset}]` : '[Custom]';
+        }
         
-        // 滑点
+        // Slippage
         const slip = data.slippage;
-        document.getElementById('sim-slippage').innerHTML = slip.enabled ? 
-            `<span style="color:#3fb950">开</span> ${slip.mode} ${slip.value}%` : 
-            `<span style="color:#8b949e">关</span>`;
+        const simSlippage = document.getElementById('sim-slippage');
+        if (simSlippage) {
+            simSlippage.innerHTML = slip.enabled ? 
+                `<span style="color:#3fb950">On</span> ${slip.mode} ${slip.value}%` :
+                `<span style="color:#8b949e">Off</span>`;
+        }
         
-        // 手续费
+        // Commission
         const comm = data.commission;
-        document.getElementById('sim-commission').innerHTML = comm.enabled ? 
-            `<span style="color:#3fb950">开</span> ${(comm.rate*100).toFixed(2)}% (≥$${comm.minimum})` : 
-            `<span style="color:#8b949e">关</span>`;
+        const simCommission = document.getElementById('sim-commission');
+        if (simCommission) {
+            simCommission.innerHTML = comm.enabled ? 
+                `<span style="color:#3fb950">On</span> ${(comm.rate*100).toFixed(2)}% (≥$${comm.minimum})` :
+                `<span style="color:#8b949e">Off</span>`;
+        }
         
-        // 部分成交
+        // Partial fill
         const pf = data.partial_fill;
-        document.getElementById('sim-partial').innerHTML = pf.enabled ? 
-            `<span style="color:#3fb950">开</span> >${pf.threshold}` : 
-            `<span style="color:#8b949e">关</span>`;
+        const simPartial = document.getElementById('sim-partial');
+        if (simPartial) {
+            simPartial.innerHTML = pf.enabled ? 
+                `<span style="color:#3fb950">On</span> >${pf.threshold}` :
+                `<span style="color:#8b949e">Off</span>`;
+        }
         
-        // 延迟
+        // Latency
         const lat = data.latency;
-        document.getElementById('sim-latency').innerHTML = lat.enabled ? 
-            `<span style="color:#3fb950">开</span>` : 
-            `<span style="color:#8b949e">关</span>`;
+        const simLatency = document.getElementById('sim-latency');
+        if (simLatency) {
+            simLatency.innerHTML = lat.enabled ? 
+                `<span style="color:#3fb950">On</span>` :
+                `<span style="color:#8b949e">Off</span>`;
+        }
     } catch (e) {
-        console.error('加载模拟配置失败:', e);
+        console.error('Load simulation config failed:', e);
     }
 }
 
@@ -524,70 +564,98 @@ async function loadConfig() {
                 tokenEl.textContent = data.webhook_token;
                 tokenEl.style.color = '#58a6ff';
             } else {
-                tokenEl.textContent = '未设置';
+                tokenEl.textContent = 'Not set';
                 tokenEl.style.color = '#f85149';
             }
         }
     } catch (e) {
-        console.error('加载配置失败:', e);
+        console.error('Load config failed:', e);
     }
 }
 
 function copyToken() {
     const token = document.getElementById('webhook-token').textContent;
-    if (token && token !== '未设置' && token !== '-') {
+    if (token && token !== 'Not set' && token !== '-') {
         navigator.clipboard.writeText(token).then(() => {
-            alert('Token 已复制');
+            alert('Token copied');
         });
     }
 }
 
-// ========== 绩效分析 ==========
+// ========== Analytics ==========
 
 async function loadAnalytics() {
     try {
         const res = await fetch('/api/analytics');
         const data = await res.json();
         
-        // 夏普比率
+        // Sharpe
         const sharpe = data.sharpe;
-        document.getElementById('sharpe-ratio').textContent = sharpe.sharpe_ratio || '-';
-        document.getElementById('sharpe-ratio').className = 'stat-value ' + 
-            (sharpe.sharpe_ratio > 0 ? 'positive' : sharpe.sharpe_ratio < 0 ? 'negative' : '');
-        document.getElementById('annual-return').textContent = sharpe.annual_return ? sharpe.annual_return + '%' : '-';
-        document.getElementById('annual-return').className = 'stat-value ' + 
-            (sharpe.annual_return > 0 ? 'positive' : sharpe.annual_return < 0 ? 'negative' : '');
-        document.getElementById('volatility').textContent = sharpe.volatility ? sharpe.volatility + '%' : '-';
+        const sharpeRatio = document.getElementById('sharpe-ratio');
+        if (sharpeRatio) {
+            sharpeRatio.textContent = sharpe.sharpe_ratio || '-';
+            sharpeRatio.className = 'stat-value ' + 
+                (sharpe.sharpe_ratio > 0 ? 'positive' : sharpe.sharpe_ratio < 0 ? 'negative' : '');
+        }
+        const annualReturn = document.getElementById('annual-return');
+        if (annualReturn) {
+            annualReturn.textContent = sharpe.annual_return ? sharpe.annual_return + '%' : '-';
+            annualReturn.className = 'stat-value ' + 
+                (sharpe.annual_return > 0 ? 'positive' : sharpe.annual_return < 0 ? 'negative' : '');
+        }
+        const volatility = document.getElementById('volatility');
+        if (volatility) {
+            volatility.textContent = sharpe.volatility ? sharpe.volatility + '%' : '-';
+        }
         
-        // 最大回撤
+        // Drawdown
         const dd = data.drawdown;
-        document.getElementById('max-drawdown').textContent = dd.max_drawdown ? '-' + dd.max_drawdown + '%' : '-';
-        document.getElementById('max-drawdown').className = 'stat-value negative';
+        const maxDrawdown = document.getElementById('max-drawdown');
+        if (maxDrawdown) {
+            maxDrawdown.textContent = dd.max_drawdown ? '-' + dd.max_drawdown + '%' : '-';
+            maxDrawdown.className = 'stat-value negative';
+        }
         
-        // 交易统计
+        // Trade stats
         const ts = data.trade_stats;
-        document.getElementById('win-rate').textContent = ts.win_rate ? ts.win_rate + '%' : '-';
-        document.getElementById('win-rate').className = 'stat-value ' + 
-            (ts.win_rate >= 50 ? 'positive' : ts.win_rate > 0 ? 'negative' : '');
-        document.getElementById('profit-factor').textContent = ts.profit_factor || '-';
-        document.getElementById('profit-factor').className = 'stat-value ' + 
-            (ts.profit_factor >= 1 ? 'positive' : ts.profit_factor > 0 ? 'negative' : '');
-        document.getElementById('avg-win').textContent = ts.avg_win ? formatMoney(ts.avg_win) : '-';
-        document.getElementById('avg-loss').textContent = ts.avg_loss ? formatMoney(ts.avg_loss) : '-';
-        document.getElementById('total-trades').textContent = ts.total_trades || 0;
-        document.getElementById('net-profit').textContent = formatMoney(ts.net_profit || 0);
-        document.getElementById('net-profit').className = (ts.net_profit >= 0 ? 'positive' : 'negative');
+        const winRate = document.getElementById('win-rate');
+        if (winRate) {
+            winRate.textContent = ts.win_rate ? ts.win_rate + '%' : '-';
+            winRate.className = 'stat-value ' + 
+                (ts.win_rate >= 50 ? 'positive' : ts.win_rate > 0 ? 'negative' : '');
+        }
+        const profitFactor = document.getElementById('profit-factor');
+        if (profitFactor) {
+            profitFactor.textContent = ts.profit_factor || '-';
+            profitFactor.className = 'stat-value ' + 
+                (ts.profit_factor >= 1 ? 'positive' : ts.profit_factor > 0 ? 'negative' : '');
+        }
+        const avgWin = document.getElementById('avg-win');
+        if (avgWin) avgWin.textContent = ts.avg_win ? formatMoney(ts.avg_win) : '-';
+        const avgLoss = document.getElementById('avg-loss');
+        if (avgLoss) avgLoss.textContent = ts.avg_loss ? formatMoney(ts.avg_loss) : '-';
+        const totalTrades = document.getElementById('total-trades');
+        if (totalTrades) totalTrades.textContent = ts.total_trades || 0;
+        const netProfit = document.getElementById('net-profit');
+        if (netProfit) {
+            netProfit.textContent = formatMoney(ts.net_profit || 0);
+            netProfit.className = (ts.net_profit >= 0 ? 'positive' : 'negative');
+        }
         
-        // 持仓分析
+        // Position analysis
         const pos = data.positions;
-        document.getElementById('pos-count').textContent = pos.total_positions || 0;
-        document.getElementById('pos-pct').textContent = pos.position_pct ? pos.position_pct + '%' : '0%';
-        document.getElementById('top1-pct').textContent = pos.concentration?.top1 ? pos.concentration.top1 + '%' : '-';
-        document.getElementById('hhi').textContent = pos.concentration?.hhi || '-';
+        const posCount = document.getElementById('pos-count');
+        if (posCount) posCount.textContent = pos.total_positions || 0;
+        const posPct = document.getElementById('pos-pct');
+        if (posPct) posPct.textContent = pos.position_pct ? pos.position_pct + '%' : '0%';
+        const top1Pct = document.getElementById('top1-pct');
+        if (top1Pct) top1Pct.textContent = pos.concentration?.top1 ? pos.concentration.top1 + '%' : '-';
+        const hhi = document.getElementById('hhi');
+        if (hhi) hhi.textContent = pos.concentration?.hhi || '-';
         
-        // 持仓分布条形图
+        // Position bars
         const barsDiv = document.getElementById('position-bars');
-        if (pos.positions && pos.positions.length > 0) {
+        if (barsDiv && pos.positions && pos.positions.length > 0) {
             barsDiv.innerHTML = pos.positions.slice(0, 5).map(p => {
                 const pnlClass = p.pnl >= 0 ? 'positive' : 'negative';
                 const pnlSign = p.pnl >= 0 ? '+' : '';
@@ -604,18 +672,18 @@ async function loadAnalytics() {
                     </div>
                 `;
             }).join('');
-        } else {
-            barsDiv.innerHTML = '<div style="color:#8b949e;">暂无持仓</div>';
+        } else if (barsDiv) {
+            barsDiv.innerHTML = '<div style="color:#8b949e;">No positions</div>';
         }
         
     } catch (e) {
-        console.error('加载分析数据失败:', e);
+        console.error('Load analytics failed:', e);
     }
 }
 
-// ========== 初始化 ==========
+// ========== Init ==========
 
-// 快速刷新（不含 analytics，30秒）
+// Quick refresh (no analytics, 30s)
 function loadQuick() { 
     loadAccounts(); 
     loadAccount(); 
@@ -624,24 +692,76 @@ function loadQuick() {
     loadEquityChart(); 
 }
 
-// 完整加载（含 analytics）
+// Full load (with analytics)
 async function loadAll() { 
-    await loadUser();  // 先加载用户信息
+    await loadUser();
     
-    // 初始化统一导航栏
+    // Init nav
     if (typeof initNav === 'function') {
         initNav({ title: 'Paper Trade', currentRoute: 'home' });
     }
     loadQuick();
     loadSimulation();
-    loadConfig();  // 加载系统配置 (Webhook Token)
+    loadConfig();
     loadAnalytics();
 }
 
-// 页面加载
+// Footer time: Real = browser, Trade = sim-time. Layout/labels/font match ZuiLow (Real_ Time, zero-pad, monospace).
+var FOOTER_TIME_LABEL = { real: 'Real_ Time:', trade: 'Trade Time:' };
+
+function formatInTZ(d, tz) {
+    if (typeof d === 'string') d = new Date(d);
+    var opts = { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+    var parts = new Intl.DateTimeFormat('en-CA', opts).formatToParts(d);
+    var get = function(k) { return (parts.find(function(p) { return p.type === k; }) || {}).value || ''; };
+    var y = get('year');
+    var m = String(parseInt(get('month'), 10)).padStart(2, '0');
+    var day = String(parseInt(get('day'), 10)).padStart(2, '0');
+    var h = get('hour');
+    var min = get('minute');
+    var s = get('second');
+    return y + '/' + m + '/' + day + ' ' + h + ':' + min + ':' + s;
+}
+
+async function getSimTime() {
+    try {
+        const themeRes = await fetch('/api/theme', { credentials: 'include' });
+        const themeData = await themeRes.json();
+        if (themeData.theme === 'simulate') {
+            const nowRes = await fetch('/api/sim_now', { credentials: 'include' });
+            const nowData = await nowRes.json();
+            if (nowData.now) return nowData.now;
+        }
+    } catch (e) { /* fallback */ }
+    return null;
+}
+
+function refreshFooterTime(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    if (!el.classList.contains('footer-time')) el.classList.add('footer-time');
+    const real = new Date();
+    const realUtc = formatInTZ(real, 'UTC');
+    const realHkt = formatInTZ(real, 'Asia/Hong_Kong');
+    var html = FOOTER_TIME_LABEL.real + ' ' + realUtc + ' (UTC) / ' + realHkt + ' (HKT)';
+    getSimTime().then(function(simNow) {
+        if (simNow) {
+            var trade = new Date(simNow);
+            var tradeUtc = formatInTZ(trade, 'UTC');
+            var tradeHkt = formatInTZ(trade, 'Asia/Hong_Kong');
+            html += '<br>' + FOOTER_TIME_LABEL.trade + ' ' + tradeUtc + ' (UTC) / ' + tradeHkt + ' (HKT)';
+        }
+        el.innerHTML = html;
+    }).catch(function() {
+        el.innerHTML = html;
+    });
+}
+
+// On load
 document.addEventListener('DOMContentLoaded', function() {
-    loadAll();  // 首次完整加载
+    loadAll();
     setupChartHover();
-    // 自动刷新已移除，避免不必要的服务器请求
-    // 如需刷新，请手动点击刷新按钮或刷新页面
+    if (document.getElementById('footer-time')) {
+        refreshFooterTime('footer-time');
+    }
 });

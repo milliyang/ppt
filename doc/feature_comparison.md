@@ -27,8 +27,8 @@
 | **安全** | 用户登录 | ✅ | admin/viewer 角色 |
 | | API 权限 | ✅ | 按角色控制 |
 | | Webhook Token | ✅ | 可选认证 |
-| **数据** | 行情查询 | ✅ | yfinance (60s缓存) |
-| | 股票代码格式 | ✅ | yfinance + 富途格式 |
+| **数据** | 行情查询 | ✅ | ZuiLow（模拟/真实同一逻辑） |
+| | 股票代码格式 | ✅ | 股票代码 + 富途格式 |
 | | 定时更新净值 | ✅ | APScheduler 内置 |
 | | 行情监控 | ✅ | Watchlist + 服务状态 |
 
@@ -40,7 +40,7 @@
 
 支持两种格式，自动转换：
 
-| 市场 | yfinance 格式 | 富途格式 |
+| 市场 | 标准格式 | 富途格式 |
 |------|--------------|---------|
 | 美股 | `AAPL` | `US.AAPL` |
 | 港股 | `0700.HK` | `HK.0700` |
@@ -65,7 +65,7 @@ curl -X POST http://localhost:11182/api/equity/update
 
 ### 行情监控 (Watchlist)
 
-管理关注股票列表，监控 yfinance 服务状态：
+管理关注股票列表，监控 ZuiLow 行情服务：
 
 **Web 界面**: http://localhost:11182/watchlist
 

@@ -11,166 +11,162 @@
 <body>
     <div class="header"></div>
     
-    <!-- 账户选择器 -->
     <div class="account-bar">
-        <span class="account-label">账户:</span>
+        <span class="account-label">Account:</span>
         <select id="account-select" onchange="switchAccount()"></select>
-        <button class="btn-sm btn-add admin-only" onclick="createAccount()">+ 新建</button>
-        <button class="btn-sm btn-del admin-only" onclick="deleteAccount()">删除</button>
+        <button class="btn-sm btn-add admin-only" onclick="createAccount()">+ New</button>
+        <button class="btn-sm btn-del admin-only" onclick="deleteAccount()">Delete</button>
     </div>
-    
+
     <div class="grid">
-        <!-- 账户概览 -->
         <div class="card">
-            <h2>账户概览</h2>
+            <h2>Account Overview</h2>
             <div class="value" id="total-value">$0</div>
-            <div class="label">总资产</div>
+            <div class="label">Total Assets</div>
             <div class="stats-grid">
-                <div class="stat-item"><div class="label">现金</div><div class="stat-value" id="cash">$0</div></div>
-                <div class="stat-item"><div class="label">持仓市值</div><div class="stat-value" id="position-value">$0</div></div>
-                <div class="stat-item"><div class="label">盈亏</div><div class="stat-value" id="pnl">$0</div></div>
-                <div class="stat-item"><div class="label">收益率</div><div class="stat-value" id="pnl-pct">0%</div></div>
+                <div class="stat-item"><div class="label">Cash</div><div class="stat-value" id="cash">$0</div></div>
+                <div class="stat-item"><div class="label">Position Value</div><div class="stat-value" id="position-value">$0</div></div>
+                <div class="stat-item"><div class="label">P&amp;L</div><div class="stat-value" id="pnl">$0</div></div>
+                <div class="stat-item"><div class="label">Return %</div><div class="stat-value" id="pnl-pct">0%</div></div>
             </div>
-        </div>
-        
-        <!-- 下单 (仅 admin) -->
-        <div class="card admin-only">
-            <h2>下单</h2>
-            <div class="order-form">
-                <input type="text" id="symbol" placeholder="代码 AAPL">
-                <input type="number" id="qty" placeholder="数量" min="1">
-                <input type="number" id="price" placeholder="价格" step="0.01">
-                <select id="side">
-                    <option value="buy">买入</option>
-                    <option value="sell">卖出</option>
-                </select>
-                <div class="btn-row">
-                    <button class="btn btn-buy" onclick="placeOrder()">下单</button>
-                    <button class="btn btn-reset" onclick="resetAccount()">重置</button>
+            <div class="cost-stats" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:#8b949e;">
+                <div class="label">Cost breakdown</div>
+                <div class="stats-grid" style="margin-top:4px;">
+                    <div class="stat-item"><div class="label">Commission</div><div class="stat-value negative" id="cost-commission">$0</div></div>
+                    <div class="stat-item"><div class="label">Slippage</div><div class="stat-value negative" id="cost-slippage">$0</div></div>
+                    <div class="stat-item"><div class="label">Realized P&amp;L</div><div class="stat-value" id="cost-realized">$0</div></div>
                 </div>
             </div>
         </div>
-        
-        <!-- 持仓 -->
+
+        <div class="card admin-only">
+            <h2>Place Order</h2>
+            <div class="order-form">
+                <input type="text" id="symbol" placeholder="Symbol AAPL">
+                <input type="number" id="qty" placeholder="Qty" min="1">
+                <input type="number" id="price" placeholder="Price" step="0.01">
+                <select id="side">
+                    <option value="buy">Buy</option>
+                    <option value="sell">Sell</option>
+                </select>
+                <div class="btn-row">
+                    <button class="btn btn-buy" onclick="placeOrder()">Place Order</button>
+                </div>
+            </div>
+        </div>
+
         <div class="card">
-            <h2>持仓 <button class="export-btn" onclick="loadPositionsRealtime()">🔄实时</button></h2>
+            <h2>Positions <button class="export-btn" onclick="loadPositionsRealtime()">&#x1F504; Realtime</button></h2>
             <table class="positions-table">
-                <thead><tr><th>代码</th><th class="num">数量</th><th class="num">成本</th><th class="num">现价</th><th class="num">盈亏</th><th class="num">盈亏%</th></tr></thead>
+                <thead><tr><th>Symbol</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Price</th><th class="num">P&amp;L</th><th class="num">P&amp;L %</th></tr></thead>
                 <tbody id="positions-body"></tbody>
             </table>
             <div id="positions-summary" style="margin-top:8px;font-size:11px;color:#8b949e;"></div>
         </div>
         
-        <!-- 成交记录 -->
         <div class="card">
-            <h2>最近成交 <a href="/api/export/trades" class="export-btn">↓CSV</a></h2>
+            <h2>Recent Trades <a href="/api/export/trades" class="export-btn">&#x2193; CSV</a></h2>
             <div class="trades" id="trades-list"></div>
         </div>
         
-        <!-- 交易模拟配置 -->
         <div class="card">
-            <h2>交易模拟 <span id="sim-preset" style="font-size:10px;color:#58a6ff;margin-left:8px;"></span></h2>
+            <h2>Simulation <span id="sim-preset" style="font-size:10px;color:#58a6ff;margin-left:8px;"></span></h2>
             <div id="simulation-config" style="font-size: 11px;">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                    <div><span class="label">滑点:</span> <span id="sim-slippage">-</span></div>
-                    <div><span class="label">手续费:</span> <span id="sim-commission">-</span></div>
-                    <div><span class="label">部分成交:</span> <span id="sim-partial">-</span></div>
-                    <div><span class="label">延迟:</span> <span id="sim-latency">-</span></div>
+                    <div><span class="label">Slippage:</span> <span id="sim-slippage">-</span></div>
+                    <div><span class="label">Commission:</span> <span id="sim-commission">-</span></div>
+                    <div><span class="label">Partial fill:</span> <span id="sim-partial">-</span></div>
+                    <div><span class="label">Latency:</span> <span id="sim-latency">-</span></div>
                 </div>
                 <div style="margin-top:8px;color:#8b949e;font-size:10px;">
-                    配置: config/simulation.yaml <button class="export-btn" onclick="loadSimulation()">🔄</button>
+                    config/simulation.yaml <button class="export-btn" onclick="loadSimulation()">&#x1F504;</button>
                 </div>
-                <!-- Webhook Token (仅 admin) -->
                 <div class="admin-only" style="margin-top:10px;padding-top:8px;border-top:1px solid #21262d;">
                     <span class="label">Webhook Token:</span>
                     <code id="webhook-token" style="font-size:10px;background:#161b22;padding:2px 6px;border-radius:3px;margin-left:4px;word-break:break-all;">-</code>
-                    <button class="export-btn" onclick="copyToken()" title="复制">📋</button>
+                    <button class="export-btn" onclick="copyToken()" title="Copy">&#x1F4CB;</button>
                 </div>
             </div>
         </div>
-        
-        <!-- 收益曲线 -->
+
         <div class="card" style="grid-column: span 2;">
-            <h2>收益曲线 
-                <button class="export-btn" onclick="updateEquity()" title="用实时价格更新净值">📊更新净值</button>
-                <a href="/api/export/equity" class="export-btn">↓CSV</a>
+            <h2>Equity Curve
+                <button class="export-btn" onclick="updateEquity()" title="Update equity with market price">&#x1F4CA; Update</button>
+                <a href="/api/export/equity" class="export-btn">&#x2193; CSV</a>
             </h2>
             <canvas id="equity-chart" height="200"></canvas>
         </div>
         
-        <!-- 绩效分析 -->
         <div class="card">
-            <h2>绩效指标 <button class="export-btn" onclick="loadAnalytics()">🔄</button></h2>
+            <h2>Analytics <button class="export-btn" onclick="loadAnalytics()">&#x1F504;</button></h2>
             <div style="font-size: 11px;">
                 <div class="stats-grid">
                     <div class="stat-item">
-                        <div class="label">夏普比率</div>
+                        <div class="label">Sharpe</div>
                         <div class="stat-value" id="sharpe-ratio">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">最大回撤</div>
+                        <div class="label">Max Drawdown</div>
                         <div class="stat-value" id="max-drawdown">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">年化收益</div>
+                        <div class="label">Ann. Return</div>
                         <div class="stat-value" id="annual-return">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">波动率</div>
+                        <div class="label">Volatility</div>
                         <div class="stat-value" id="volatility">-</div>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- 交易统计 -->
+
         <div class="card">
-            <h2>交易统计</h2>
+            <h2>Trade Stats</h2>
             <div style="font-size: 11px;">
                 <div class="stats-grid">
                     <div class="stat-item">
-                        <div class="label">胜率</div>
+                        <div class="label">Win Rate</div>
                         <div class="stat-value" id="win-rate">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">盈亏比</div>
+                        <div class="label">Profit Factor</div>
                         <div class="stat-value" id="profit-factor">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">平均盈利</div>
+                        <div class="label">Avg Win</div>
                         <div class="stat-value positive" id="avg-win">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">平均亏损</div>
+                        <div class="label">Avg Loss</div>
                         <div class="stat-value negative" id="avg-loss">-</div>
                     </div>
                 </div>
                 <div style="margin-top:8px;border-top:1px solid #21262d;padding-top:8px;">
-                    <span class="label">已平仓:</span> <span id="total-trades">0</span> 笔 |
-                    <span class="label">净盈亏:</span> <span id="net-profit">$0</span>
+                    <span class="label">Closed:</span> <span id="total-trades">0</span> |
+                    <span class="label">Net P&amp;L:</span> <span id="net-profit">$0</span>
                 </div>
             </div>
         </div>
-        
-        <!-- 持仓分析 -->
+
         <div class="card" style="grid-column: span 2;">
-            <h2>持仓分析</h2>
+            <h2>Position Analysis</h2>
             <div style="font-size: 11px;">
                 <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
                     <div class="stat-item">
-                        <div class="label">持仓数</div>
+                        <div class="label"># Positions</div>
                         <div class="stat-value" id="pos-count">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">仓位占比</div>
+                        <div class="label">Position %</div>
                         <div class="stat-value" id="pos-pct">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">最大持仓</div>
+                        <div class="label">Top 1</div>
                         <div class="stat-value" id="top1-pct">-</div>
                     </div>
                     <div class="stat-item">
-                        <div class="label">集中度(HHI)</div>
+                        <div class="label">HHI</div>
                         <div class="stat-value" id="hhi">-</div>
                     </div>
                 </div>
@@ -179,7 +175,8 @@
         </div>
     </div>
     
-    <!-- 图表悬浮提示 -->
+    <div id="footer-time" style="font-size:11px;color:#8b949e;margin:12px 16px;"></div>
+    
     <div id="chart-tooltip" class="chart-tooltip"></div>
     
     <script src="/static/js/app.js"></script>

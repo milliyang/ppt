@@ -25,9 +25,9 @@
 | 多账户 | ✅ | 创建/切换/删除账户 |
 | 收益曲线 | ✅ | 每日净值图表 (平滑曲线+渐变) |
 | 导出 CSV | ✅ | 交易记录/净值导出 |
-| 实时行情 | ✅ | yfinance 获取价格 (60s 缓存) |
+| 实时行情 | ✅ | ZuiLow 取价（模拟/真实同一逻辑） |
 | Webhook | ✅ | 接收外部信号自动下单 |
-| 股票代码格式 | ✅ | 支持 yfinance + 富途格式 |
+| 股票代码格式 | ✅ | 支持标准格式 + 富途格式 |
 | 定时更新净值 | ✅ | APScheduler 内置定时器 |
 | 行情监控 | ✅ | Watchlist 管理 + 服务状态检测 |
 | 图表交互 | ✅ | 悬浮显示详情 (日期/净值/收益) |
@@ -79,7 +79,7 @@
 | `config/users.yaml` | ✅ | 用户配置 (admin/viewer) |
 | `static/` | ✅ | 前端文件 |
 | `requirements.txt` | ✅ | Python 依赖 |
-| `run_ppt_server.sh` | ✅ | 本地启动脚本 |
+| `start_ppt.sh` | ✅ | 本地启动脚本 (Linux/Mac) |
 | `deploy_ppt_server.sh` | ✅ | Docker 部署脚本 |
 | `env.example` | ✅ | 环境变量模板 |
 
@@ -192,7 +192,7 @@ curl http://localhost:11182/api/health
 | 后端 | Flask + Gunicorn + Eventlet |
 | 实时通信 | Flask-SocketIO |
 | 数据存储 | SQLite |
-| 行情数据 | yfinance |
+| 行情数据 | ZuiLow |
 | 部署 | Docker |
 | 端口 | 11182 |
 
@@ -202,7 +202,7 @@ curl http://localhost:11182/api/health
 
 ```bash
 # 本地启动
-./run_ppt_server.sh
+./start_ppt.sh   # 或 Windows: .\start_ppt.ps1
 
 # Docker 部署
 ./deploy_ppt_server.sh upd

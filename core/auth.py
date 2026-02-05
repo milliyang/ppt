@@ -1,10 +1,20 @@
 """
-用户认证模块
+PPT auth: load users from config/users.yaml; Flask-Login; admin_required, login_required_api; WEBHOOK_TOKEN for server-to-server.
 
-- 从 config/users.yaml 加载用户
-- Flask-Login 集成
-- 权限装饰器 (admin_required, login_required_api)
-- 服务端 Token 认证 (WEBHOOK_TOKEN)
+Used for: web UI login and API protection; only users in users.yaml with role=admin can access admin routes.
+
+Classes:
+    User   UserMixin; id, username, role, check_password(password), is_admin
+
+Functions:
+    load_users(config_path=None)   Load from YAML (default config/users.yaml)
+    init_login_manager(app)        Setup Flask-Login
+    authenticate(username, password) -> Optional[User]
+    admin_required(f) / login_required_api(f)   Decorators
+    _check_webhook_token() -> bool   X-Webhook-Token vs WEBHOOK_TOKEN (for webhook route)
+
+Features:
+    - Users YAML: username, password (hashed), role (admin/user)
 """
 import os
 from functools import wraps
@@ -15,7 +25,7 @@ import yaml
 
 
 def _check_webhook_token() -> bool:
-    """检查请求是否携带有效的 Webhook Token (用于服务端调用)"""
+    """Check if request carries valid webhook token (for server-to-server)."""
     webhook_token = os.getenv('WEBHOOK_TOKEN', '')
     if not webhook_token:
         return False
@@ -24,7 +34,7 @@ def _check_webhook_token() -> bool:
     return req_token == webhook_token
 
 # ============================================================
-# 用户模型
+# User model
 # ============================================================
 
 class User(UserMixin):

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>登录 - Paper Trade</title>
+    <title>Login - Paper Trade</title>
     <link rel="icon" type="image/svg+xml" href="/static/icon4-dollar.svg">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -84,14 +84,14 @@
         <h1>Paper Trade</h1>
         <form id="login-form">
             <div class="form-group">
-                <label for="username">用户名</label>
+                <label for="username">Username</label>
                 <input type="text" id="username" name="username" required autofocus>
             </div>
             <div class="form-group">
-                <label for="password">密码</label>
+                <label for="password">Password</label>
                 <input type="password" id="password" name="password" required>
             </div>
-            <button type="submit" class="btn">登录</button>
+            <button type="submit" class="btn">Login</button>
             <div id="error" class="error"></div>
         </form>
     </div>
@@ -114,11 +114,11 @@
                 if (res.ok) {
                     window.location.href = '/';
                 } else {
-                    errorEl.textContent = data.error || '登录失败';
+                    errorEl.textContent = data.error || 'Login failed';
                     errorEl.classList.add('show');
                 }
             } catch (err) {
-                errorEl.textContent = '网络错误';
+                errorEl.textContent = 'Network error';
                 errorEl.classList.add('show');
             }
         });

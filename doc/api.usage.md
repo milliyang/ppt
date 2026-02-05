@@ -269,7 +269,7 @@ curl -X POST http://localhost:11182/api/simulation/reload
 
 ## 行情监控 API (Watchlist)
 
-管理关注列表，监控 yfinance 服务状态。
+管理关注列表，监控 ZuiLow 行情服务（模拟/真实同一逻辑）。
 
 **Web 界面**: http://localhost:11182/watchlist
 
@@ -297,7 +297,7 @@ curl -X POST http://localhost:11182/api/watchlist/clear
 # 刷新所有关注股票行情
 curl -X POST http://localhost:11182/api/watchlist/refresh
 
-# 测试 yfinance 服务状态
+# 测试 ZuiLow 行情服务
 curl http://localhost:11182/api/watchlist/test
 ```
 
@@ -318,7 +318,7 @@ curl http://localhost:11182/api/watchlist/test
 ```json
 {
   "status": "ok",
-  "message": "yfinance 服务正常",
+  "message": "ZuiLow 行情服务正常",
   "test_symbol": "AAPL",
   "price": 185.5,
   "latency_ms": 320
@@ -530,9 +530,9 @@ http://your-server:11182/api/webhook
 
 ## 股票代码格式
 
-支持 **yfinance 格式** 和 **富途格式**，内部统一转换为 yfinance 格式：
+支持 **标准格式** 和 **富途格式**，内部统一转换：
 
-| 市场 | yfinance 格式 | 富途格式 |
+| 市场 | 标准格式 | 富途格式 |
 |------|--------------|---------|
 | 美股 | `AAPL` | `US.AAPL` |
 | 港股 | `0700.HK` | `HK.0700` |

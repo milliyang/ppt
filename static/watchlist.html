@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>行情监控 - Paper Trade</title>
+    <title>Watchlist - Paper Trade</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/svg+xml" href="/static/icon4-dollar.svg">
@@ -151,100 +151,92 @@
 <body>
     <div class="header"></div>
     
-    <!-- 服务状态 -->
     <div class="service-status unknown" id="service-status" style="max-width:1200px;margin:0 auto 20px auto;">
         <div class="dot"></div>
         <div>
-            <strong>yfinance 服务</strong>
-            <span id="service-message">检测中...</span>
+            <strong>ZuiLow Quote Service</strong>
+            <span id="service-message"></span>
             <span class="latency" id="service-latency"></span>
         </div>
-        <button class="btn btn-sm" onclick="testService()" style="margin-left:auto;">🔄 测试</button>
+        <button class="btn btn-sm" onclick="testService()" style="margin-left:auto;">Test</button>
     </div>
-    
+
     <div class="grid">
-        <!-- 添加股票 -->
         <div class="card">
-            <h2>添加关注</h2>
+            <h2>Add Symbol</h2>
             <div class="add-form">
-                <input type="text" id="add-symbol" placeholder="股票代码 (如 AAPL, HK.0700)">
-                <button class="btn" onclick="addSymbol()">添加</button>
+                <input type="text" id="add-symbol" placeholder="Symbol (e.g. AAPL, HK.00700)">
+                <button class="btn" onclick="addSymbol()">Add</button>
             </div>
-            
+
             <div class="presets">
-                <div class="presets-title">快速添加:</div>
+                <div class="presets-title">Quick add:</div>
                 <button class="preset-btn" onclick="addPreset('AAPL')">AAPL</button>
                 <button class="preset-btn" onclick="addPreset('GOOGL')">GOOGL</button>
                 <button class="preset-btn" onclick="addPreset('MSFT')">MSFT</button>
                 <button class="preset-btn" onclick="addPreset('TSLA')">TSLA</button>
                 <button class="preset-btn" onclick="addPreset('NVDA')">NVDA</button>
-                <button class="preset-btn" onclick="addPreset('HK.0700')">腾讯</button>
-                <button class="preset-btn" onclick="addPreset('HK.9988')">阿里</button>
-                <button class="preset-btn" onclick="addPreset('SH.600519')">茅台</button>
+                <button class="preset-btn" onclick="addPreset('HK.00700')">HK.00700</button>
+                <button class="preset-btn" onclick="addPreset('HK.09988')">HK.09988</button>
+                <button class="preset-btn" onclick="addPreset('SH.600519')">600519.SS</button>
             </div>
         </div>
-        
-        <!-- 操作按钮 -->
+
         <div class="card">
-            <h2>批量操作</h2>
+            <h2>Actions</h2>
             <div class="actions" style="flex-direction: column; gap: 12px;">
-                <button class="btn" onclick="refreshAll()" style="width:100%;">🔄 刷新所有行情</button>
-                <button class="btn" onclick="initDefault()" style="width:100%;background:#21262d;border:1px solid #30363d;">📋 导入默认关注</button>
-                <button class="btn btn-reset" onclick="clearAll()" style="width:100%;">🗑️ 清空列表</button>
+                <button class="btn" onclick="refreshAll()" style="width:100%;">Refresh All</button>
+                <button class="btn" onclick="initDefault()" style="width:100%;background:#21262d;border:1px solid #30363d;">Load Default</button>
+                <button class="btn btn-reset" onclick="clearAll()" style="width:100%;">Clear</button>
             </div>
             <div style="margin-top:16px; font-size:12px; color:#8b949e;">
-                <p>• 支持 yfinance 格式: AAPL, 0700.HK</p>
-                <p>• 支持富途格式: US.AAPL, HK.0700</p>
-                <p>• 行情缓存 60 秒</p>
+                <p>Symbol formats: AAPL, HK.00700, US.AAPL, 0700.HK (auto-normalized)</p>
+                <p>Quotes from ZuiLow (refresh or after order)</p>
             </div>
         </div>
-        
-        <!-- 关注列表 -->
+
         <div class="card" style="grid-column: span 2;">
-            <h2>关注列表 <span id="watchlist-count" style="font-size:12px;color:#8b949e;margin-left:8px;"></span></h2>
+            <h2>Watchlist <span id="watchlist-count" style="font-size:12px;color:#8b949e;margin-left:8px;"></span></h2>
             <div id="watchlist-container">
-                <div class="empty-state">加载中...</div>
+                <div class="empty-state">Loading...</div>
             </div>
         </div>
     </div>
     
     <script>
-        // 测试服务
         async function testService() {
             const statusEl = document.getElementById('service-status');
             const msgEl = document.getElementById('service-message');
             const latencyEl = document.getElementById('service-latency');
             const indicatorEl = document.getElementById('service-indicator');
-            
+
+            if (!statusEl || !msgEl || !latencyEl) return;
+
             statusEl.className = 'service-status unknown';
-            msgEl.textContent = '检测中...';
+            msgEl.textContent = 'Checking...';
             latencyEl.textContent = '';
-            
+
             try {
                 const res = await fetch('/api/watchlist/test');
                 const data = await res.json();
-                
+
                 if (data.status === 'ok') {
                     statusEl.className = 'service-status ok';
-                    msgEl.textContent = `正常 (AAPL: $${data.price})`;
-                    indicatorEl.textContent = '● 正常';
-                    indicatorEl.style.color = '#3fb950';
+                    msgEl.textContent = `OK (AAPL: $${data.price})`;
+                    if (indicatorEl) { indicatorEl.textContent = '● OK'; indicatorEl.style.color = '#3fb950'; }
                 } else {
                     statusEl.className = 'service-status error';
-                    msgEl.textContent = data.message || '异常';
-                    indicatorEl.textContent = '● 异常';
-                    indicatorEl.style.color = '#f85149';
+                    msgEl.textContent = data.message || 'Error';
+                    if (indicatorEl) { indicatorEl.textContent = '● Error'; indicatorEl.style.color = '#f85149'; }
                 }
                 latencyEl.textContent = `(${data.latency_ms}ms)`;
             } catch (e) {
                 statusEl.className = 'service-status error';
-                msgEl.textContent = '连接失败';
-                indicatorEl.textContent = '● 异常';
-                indicatorEl.style.color = '#f85149';
+                msgEl.textContent = 'Connection failed';
+                if (indicatorEl) { indicatorEl.textContent = '● Error'; indicatorEl.style.color = '#f85149'; }
             }
         }
-        
-        // 加载关注列表
+
         async function loadWatchlist() {
             try {
                 const res = await fetch('/api/watchlist');
@@ -253,35 +245,35 @@
                 const countEl = document.getElementById('watchlist-count');
                 
                 if (!data.watchlist || data.watchlist.length === 0) {
-                    container.innerHTML = '<div class="empty-state">暂无关注股票，请添加</div>';
+                    container.innerHTML = '<div class="empty-state">No symbols. Add one above.</div>';
                     countEl.textContent = '';
                     return;
                 }
-                
-                countEl.textContent = `(${data.watchlist.length} 只)`;
-                
+
+                countEl.textContent = `(${data.watchlist.length})`;
+
                 let html = `
                     <table class="watchlist-table">
                         <thead>
                             <tr>
-                                <th>代码</th>
-                                <th>名称</th>
-                                <th>价格</th>
-                                <th>状态</th>
-                                <th>更新时间</th>
-                                <th>操作</th>
+                                <th>Symbol</th>
+                                <th>Name</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Updated</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                 `;
-                
+
                 for (const item of data.watchlist) {
                     const statusClass = item.status || 'unknown';
                     const statusText = {
-                        'ok': '正常',
-                        'error': '失败',
-                        'pending': '待刷新',
-                        'unknown': '未知'
+                        'ok': 'OK',
+                        'error': 'Error',
+                        'pending': 'Pending',
+                        'unknown': '-'
                     }[statusClass] || statusClass;
                     
                     const price = item.last_price ? `$${item.last_price.toFixed(2)}` : '-';
@@ -296,8 +288,8 @@
                             <td><span class="status-badge ${statusClass}"${errorTip}>${statusText}</span></td>
                             <td style="color:#8b949e;font-size:12px;">${updateTime}</td>
                             <td>
-                                <button class="btn-icon" onclick="refreshOne('${item.symbol}')" title="刷新">🔄</button>
-                                <button class="btn-icon" onclick="removeSymbol('${item.symbol}')" title="删除">✕</button>
+                                <button class="btn-icon" onclick="refreshOne('${item.symbol}')" title="Refresh">Refresh</button>
+                                <button class="btn-icon" onclick="removeSymbol('${item.symbol}')" title="Remove">Remove</button>
                             </td>
                         </tr>
                     `;
@@ -306,12 +298,11 @@
                 html += '</tbody></table>';
                 container.innerHTML = html;
             } catch (e) {
-                document.getElementById('watchlist-container').innerHTML = 
-                    `<div class="empty-state" style="color:#f85149;">加载失败: ${e.message}</div>`;
+                document.getElementById('watchlist-container').innerHTML =
+                    `<div class="empty-state" style="color:#f85149;">Load failed: ${e.message}</div>`;
             }
         }
-        
-        // 添加股票
+
         async function addSymbol() {
             const input = document.getElementById('add-symbol');
             const symbol = input.value.trim();
@@ -332,11 +323,11 @@
                     loadWatchlist();
                 }
             } catch (e) {
-                alert('添加失败: ' + e.message);
+                alert('Add failed: ' + e.message);
             }
         }
         
-        // 快速添加
+        // Quick add
         async function addPreset(symbol) {
             try {
                 const res = await fetch('/api/watchlist', {
@@ -351,71 +342,69 @@
             } catch (e) {}
         }
         
-        // 删除股票
+        // Remove symbol
         async function removeSymbol(symbol) {
-            if (!confirm(`确定删除 ${symbol}？`)) return;
-            
+            if (!confirm(`Remove ${symbol}?`)) return;
+
             try {
                 await fetch(`/api/watchlist/${encodeURIComponent(symbol)}`, {method: 'DELETE'});
                 loadWatchlist();
             } catch (e) {
-                alert('删除失败: ' + e.message);
+                alert('Remove failed: ' + e.message);
             }
         }
-        
-        // 刷新单个
+
         async function refreshOne(symbol) {
             try {
                 const res = await fetch(`/api/quote/${encodeURIComponent(symbol)}`);
                 const quote = await res.json();
                 
-                // 更新数据库
+                // Update DB
                 await fetch('/api/watchlist/refresh', {method: 'POST'});
                 loadWatchlist();
             } catch (e) {
-                alert('刷新失败: ' + e.message);
+                alert('Refresh failed: ' + e.message);
             }
         }
         
-        // 刷新所有
+        // Refresh all
         async function refreshAll() {
             const btn = event.target;
             btn.disabled = true;
-            btn.textContent = '刷新中...';
+            btn.textContent = 'Refreshing...';
             
             try {
                 const res = await fetch('/api/watchlist/refresh', {method: 'POST'});
                 const data = await res.json();
                 
-                btn.textContent = `✓ ${data.ok} 成功, ${data.fail} 失败`;
+                btn.textContent = `✓ ${data.ok} ok, ${data.fail} fail`;
                 setTimeout(() => {
-                    btn.textContent = '🔄 刷新所有行情';
+                    btn.textContent = 'Refresh All';
                 }, 2000);
-                
+
                 loadWatchlist();
             } catch (e) {
-                btn.textContent = '刷新失败';
+                btn.textContent = 'Refresh failed';
                 setTimeout(() => {
-                    btn.textContent = '🔄 刷新所有行情';
+                    btn.textContent = 'Refresh All';
                 }, 2000);
             } finally {
                 btn.disabled = false;
             }
         }
         
-        // 清空列表
+        // Clear list
         async function clearAll() {
-            if (!confirm('确定清空所有关注？')) return;
-            
+            if (!confirm('Clear all watchlist?')) return;
+
             try {
                 await fetch('/api/watchlist/clear', {method: 'POST'});
                 loadWatchlist();
             } catch (e) {
-                alert('清空失败: ' + e.message);
+                alert('Clear failed: ' + e.message);
             }
         }
-        
-        // 导入默认关注
+
         async function initDefault() {
             try {
                 const res = await fetch('/api/watchlist/init', {method: 'POST'});
@@ -423,25 +412,23 @@
                 alert(data.message);
                 loadWatchlist();
             } catch (e) {
-                alert('导入失败: ' + e.message);
+                alert('Init failed: ' + e.message);
             }
         }
-        
-        // Enter 键添加
+
         document.getElementById('add-symbol').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') addSymbol();
         });
-        
-        // 初始化
-        testService();
+
+        // Load list from DB only; no quote request until user clicks Test or Refresh
         loadWatchlist();
     </script>
+    <div id="footer-time" style="font-size:11px;color:#8b949e;margin:12px 16px;"></div>
     <script src="/static/js/app.js"></script>
     <script>
-        // 页面加载时初始化导航
         document.addEventListener('DOMContentLoaded', function() {
             if (typeof initNav === 'function') {
-                initNav({ title: '行情监控', currentRoute: 'watchlist' });
+                initNav({ title: 'Watchlist', currentRoute: 'watchlist' });
             }
         });
     </script>

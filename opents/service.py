@@ -1,11 +1,17 @@
 """
-OpenTimestamps 时间戳服务
+OpenTimestamps service: collect account/trade/equity data, generate record, submit to OTS calendar, save record and proof.
 
-功能:
-1. 收集所有账户的PaperTrade操作信息、收益曲线等，生成原始记录
-2. 提交到OpenTimestamps，验证信息早于下一个交易日
-3. 保存原始结果和证明文件
-4. 供第三方验证
+Used for: opents API create/verify; record and proof files under OTS_STORAGE_DIR (default run/opentimestamps).
+
+Functions:
+    get_timestamp_history(limit) -> List[Dict]
+    get_timestamp_detail(date) -> Optional[Dict]
+    create_timestamp(...) -> Dict   Create record, submit to calendar, save proof
+    verify_timestamp(date) -> Dict  Verify proof and return result
+
+Features:
+    - Record: JSON with accounts, equity curves, trades; proof: binary from opentimestamps library
+    - Requires opentimestamps Python library; OTS_AVAILABLE False if not installed
 """
 import os
 import json
@@ -17,7 +23,7 @@ from typing import Dict, List, Optional, Any
 
 from core import db as database
 from core.analytics import get_full_analytics
-from core.utils import get_quotes_batch
+from core.utils import get_quotes_batch, get_equity_date, get_current_datetime_iso, is_sim_mode
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -67,7 +73,7 @@ def get_next_trading_day(date: datetime = None) -> str:
         下一个交易日的日期字符串 (YYYY-MM-DD)
     """
     if date is None:
-        date = datetime.now()
+        date = get_equity_date()
     
     # 简单实现：跳过周末
     next_day = date + timedelta(days=1)
@@ -108,7 +114,7 @@ def collect_account_data(account_name: str, quotes: Dict = None) -> Dict[str, An
         'trades': trades,
         'equity_history': equity_history,
         'analytics': analytics,
-        'collected_at': datetime.now().isoformat(),
+        'collected_at': get_current_datetime_iso(),
     }
 
 
@@ -136,8 +142,8 @@ def collect_all_accounts_data() -> Dict[str, Any]:
     
     # 生成完整记录
     record = {
-        'date': datetime.now().strftime('%Y-%m-%d'),
-        'timestamp': datetime.now().isoformat(),
+        'date': get_equity_date().strftime('%Y-%m-%d'),
+        'timestamp': get_current_datetime_iso(),
         'next_trading_day': get_next_trading_day(),
         'accounts': accounts_data,
         'summary': {
@@ -163,7 +169,7 @@ def generate_record_file(record: Dict[str, Any], label: str = None) -> Path:
         保存的文件路径
     """
     date = record['date']
-    timestamp_str = record.get('timestamp', datetime.now().isoformat())
+    timestamp_str = record.get('timestamp', get_current_datetime_iso())
     
     # 将标签保存到记录中
     if label:
@@ -178,9 +184,8 @@ def generate_record_file(record: Dict[str, Any], label: str = None) -> Path:
         try:
             dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
             time_suffix = dt.strftime('%H-%M-%S')
-        except:
-            # 如果解析失败，使用当前时间
-            time_suffix = datetime.now().strftime('%H-%M-%S')
+        except (ValueError, TypeError):
+            time_suffix = datetime.fromisoformat(get_current_datetime_iso().replace('Z', '+00:00')).strftime('%H-%M-%S')
     
     filename = f"record_{date}_{time_suffix}.json"
     filepath = RECORDS_DIR / filename
@@ -367,7 +372,7 @@ def create_daily_timestamp(label: str = None) -> Dict[str, Any]:
     Returns:
         操作结果字典
     """
-    logger.info(f"[OTS] 开始创建每日时间戳: {datetime.now().isoformat()}, label={label}")
+    logger.info(f"[OTS] 开始创建每日时间戳: {get_current_datetime_iso()}, label={label}")
     
     try:
         # 1. 收集数据
@@ -418,16 +423,19 @@ def create_daily_timestamp(label: str = None) -> Dict[str, Any]:
             'verification': verify_result,
         }
         
-        # 可选：自动提交到 GitHub
-        try:
-            from . import github
-            github_result = github.auto_commit_after_timestamp(result)
-            result['github'] = github_result
-            if github_result.get('success'):
-                logger.info(f"[OTS] 已自动提交到 GitHub: {github_result.get('repo')}")
-        except Exception as e:
-            logger.warning(f"[OTS] GitHub 自动提交失败: {e}")
-            result['github'] = {'success': False, 'error': str(e)}
+        # 可选：自动提交到 GitHub（仿真模式下不调用 GitHub）
+        if is_sim_mode():
+            result['github'] = {'success': False, 'skipped': True, 'reason': 'simulation mode'}
+        else:
+            try:
+                from . import github
+                github_result = github.auto_commit_after_timestamp(result)
+                result['github'] = github_result
+                if github_result.get('success'):
+                    logger.info(f"[OTS] 已自动提交到 GitHub: {github_result.get('repo')}")
+            except Exception as e:
+                logger.warning(f"[OTS] GitHub 自动提交失败: {e}")
+                result['github'] = {'success': False, 'error': str(e)}
         
         logger.info(f"[OTS] 时间戳创建成功: {result['date']}")
         return result

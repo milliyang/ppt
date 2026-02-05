@@ -1,7 +1,14 @@
 """
-GitHub 自动提交功能
+GitHub auto-commit: commit timestamp records and proof files to a GitHub repo.
 
-将时间戳记录和证明文件自动提交到 GitHub 仓库
+Used for: OpenTimestamps flow; after creating/verifying a timestamp, optionally push record and proof to GitHub.
+
+Functions:
+    commit_to_github(record_file, proof_file=None, repo_name=None, branch='main', commit_message=None) -> Dict
+        Push record_file (and optional proof_file) to repo; repo_name from GITHUB_REPO env; requires GITHUB_TOKEN.
+
+Features:
+    - Requires PyGithub; returns {success, error} or {success, commit_sha, ...}
 """
 import os
 from pathlib import Path

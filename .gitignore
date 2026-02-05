@@ -3,14 +3,16 @@
 .env.*
 !.env.example
 
-# Database
-db/
+# Runtime data (all runtime-generated files)
+run/
 *.db
 *.sqlite
-
-# Logs
-logs/
 *.log
+
+# Legacy paths (for migration)
+data/
+db/
+logs/
 
 # Python
 __pycache__/
