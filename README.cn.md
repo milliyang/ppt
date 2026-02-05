@@ -6,7 +6,7 @@
 
 Sub-project of **ZuiLow** 一站式 AI 交易平台；可独立部署运行。
 
-![交易界面](doc/pic/trade.png)
+![交易界面](doc/pic/trade.jpg)
 
 ---
 

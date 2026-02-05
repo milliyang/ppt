@@ -6,7 +6,7 @@ A lightweight paper trading platform supporting multi-account management, real-t
 
 Sub-project of **ZuiLow** all-in-one AI trading platform; can be deployed standalone.
 
-![Trading Interface](doc/pic/trade.png)
+![Trading Interface](doc/pic/trade.jpg)
 
 ---
 
